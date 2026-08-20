@@ -1,0 +1,6 @@
+{
+  "name": "AyurSutra - Panchakarma Scheduling Engine",
+  "description": "Multi-variable constraint scheduling engine and dashboard for Panchakarma therapies with real-time inventory, therapist, and Droni room coordination.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
