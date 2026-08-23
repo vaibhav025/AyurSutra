@@ -1,19 +1,27 @@
 import React, { useState } from 'react';
-import { 
-  Database, 
-  Copy, 
-  Check, 
-  FileCode, 
-  Download, 
-  Sparkles
+import {
+  Database,
+  Copy,
+  Check,
+  FileCode,
+  Download,
+  Sparkles,
+  Table2,
 } from 'lucide-react';
 import { SUPABASE_SQL_SCHEMA, SUPABASE_SEED_SQL, SUPABASE_CLIENT_SNIPPET } from '../services/sqlCode';
+import { PageHeader, Card, Button } from './ui';
 
 type CodeTab = 'schema' | 'seed' | 'client';
 
+const TABS: { id: CodeTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'schema', label: 'Schema & stored procedures', icon: <Database className="w-3.5 h-3.5" /> },
+  { id: 'seed', label: 'Seed data', icon: <Sparkles className="w-3.5 h-3.5" /> },
+  { id: 'client', label: 'Client snippet', icon: <FileCode className="w-3.5 h-3.5" /> },
+];
+
 export const SqlSchemaViewer: React.FC = () => {
   const [activeCodeTab, setActiveCodeTab] = useState<CodeTab>('schema');
-  const [copied, setCopied] = useState<boolean>(false);
+  const [copied, setCopied] = useState(false);
 
   const getCode = () => {
     switch (activeCodeTab) {
@@ -42,94 +50,93 @@ export const SqlSchemaViewer: React.FC = () => {
     document.body.removeChild(element);
   };
 
+  const lineCount = getCode().split('\n').length;
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-      
-      {/* Header */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 shadow-sm space-y-2">
-        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-[#8B9D83]/15 text-[#2D3A3A] text-xs font-semibold">
-          <Database className="w-3.5 h-3.5 text-[#8B9D83]" />
-          <span>Production Supabase SQL & RPC Engine Hub</span>
-        </div>
-        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-slate-900">
-          PostgreSQL DDL Schema, Stored Procedures & Storage
-        </h1>
-        <p className="text-sm text-slate-500 max-w-3xl leading-relaxed">
-          Production-grade SQL definitions ready for instant execution in the Supabase SQL Editor. Includes atomic isolation, storage buckets for medical report PDFs, indexes, and full multi-variable constraint checking.
-        </p>
+    <div className="space-y-6 lg:space-y-8">
+      <PageHeader
+        eyebrow="Developer hub"
+        title="SQL & RPC engine"
+        description="Production-grade DDL, atomic stored procedures and client integration snippets — ready for the Supabase SQL editor."
+      />
+
+      {/* Schema relationship cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          ['bookings', 'Core scheduling table'],
+          ['therapies', 'Panchakarma protocols'],
+          ['resource_rooms', 'Droni chamber registry'],
+          ['inventory_items', 'Medicated stock ledger'],
+        ].map(([table, desc]) => (
+          <Card key={table} className="p-4 space-y-1" hover>
+            <p className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-forest">
+              <Table2 className="w-3.5 h-3.5" />
+              {table}
+            </p>
+            <p className="text-[11px] text-muted leading-relaxed">{desc}</p>
+          </Card>
+        ))}
       </div>
 
-      {/* Code Viewer Container */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        
-        {/* Tab Navigation & Action Bar */}
-        <div className="bg-slate-50 p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-          
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setActiveCodeTab('schema')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors ${
-                activeCodeTab === 'schema'
-                  ? 'bg-[#2D3A3A] text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
-              }`}
-            >
-              <Database className="w-3.5 h-3.5" />
-              <span>1. Schema & Stored Procedures (RPC)</span>
-            </button>
-
-            <button
-              onClick={() => setActiveCodeTab('seed')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors ${
-                activeCodeTab === 'seed'
-                  ? 'bg-[#2D3A3A] text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>2. Authentic Seed Data SQL</span>
-            </button>
-
-            <button
-              onClick={() => setActiveCodeTab('client')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition-colors ${
-                activeCodeTab === 'client'
-                  ? 'bg-[#2D3A3A] text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 bg-white border border-slate-200'
-              }`}
-            >
-              <FileCode className="w-3.5 h-3.5" />
-              <span>3. Next.js / Supabase JS Client</span>
-            </button>
+      {/* Code panel */}
+      <div className="glass-dark rounded-3xl overflow-hidden shadow-[0_24px_70px_rgba(23,32,29,0.35)]">
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-white/[0.08] bg-white/[0.03]">
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none" role="tablist" aria-label="Code sections">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                role="tab"
+                aria-selected={activeCodeTab === tab.id}
+                onClick={() => setActiveCodeTab(tab.id)}
+                className={`inline-flex items-center gap-2 h-9 px-3.5 rounded-xl text-xs font-semibold whitespace-nowrap cursor-pointer transition-colors ${
+                  activeCodeTab === tab.id
+                    ? 'bg-sage/20 text-sage border border-sage/30'
+                    : 'text-slate-400 border border-transparent hover:text-white hover:bg-white/5'
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
+            <span className="hidden sm:block font-mono text-[10px] text-slate-500 mr-1">
+              {lineCount} lines
+            </span>
             <button
               onClick={handleDownload}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 flex items-center space-x-1.5 transition-colors shadow-sm"
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white hover:bg-white/10 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Download File</span>
+              Download
             </button>
-
             <button
               onClick={handleCopy}
-              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-[#8B9D83] hover:bg-[#7a8c72] flex items-center space-x-1.5 shadow-sm transition-colors"
+              aria-live="polite"
+              className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors ${
+                copied
+                  ? 'bg-success/25 text-emerald-200'
+                  : 'bg-sage text-forest-deep hover:brightness-110'
+              }`}
             >
               {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Copied to Clipboard!' : 'Copy SQL'}</span>
+              {copied ? 'Copied' : 'Copy'}
             </button>
           </div>
-
         </div>
 
-        {/* Code Content */}
-        <div className="p-6 overflow-x-auto max-h-[650px] overflow-y-auto font-mono text-xs text-slate-200 bg-[#2D3A3A] leading-relaxed selection:bg-[#8B9D83] selection:text-white">
-          <pre>{getCode()}</pre>
+        {/* Code */}
+        <div
+          className="px-5 py-5 max-h-[620px] overflow-auto selection:bg-sage/40 selection:text-white"
+          role="tabpanel"
+        >
+          <pre className="font-mono text-[12px] leading-relaxed text-[#c8d6cf] whitespace-pre">
+            {getCode()}
+          </pre>
         </div>
-
       </div>
-
     </div>
   );
 };

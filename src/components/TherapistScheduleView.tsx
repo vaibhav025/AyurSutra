@@ -1,19 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Calendar, 
-  Clock, 
-  FileText, 
-  CheckCircle, 
-  Play, 
-  Layers
+import { motion } from 'motion/react';
+import {
+  CalendarDays,
+  Clock,
+  FileText,
+  CheckCircle2,
+  Play,
+  Star,
+  MapPin,
+  Droplets,
+  ChevronDown,
 } from 'lucide-react';
 import { ayurEngine } from '../services/engine';
-import { Booking, Therapist } from '../types/ayursutra';
+import type { Booking, Therapist } from '../types/ayursutra';
 import { MedicalReportModal } from './MedicalReportModal';
+import {
+  PageHeader,
+  Card,
+  Button,
+  Badge,
+  StatusBadge,
+  EmptyState,
+  Avatar,
+} from './ui';
 
 export const TherapistScheduleView: React.FC = () => {
   const [therapists, setTherapists] = useState<Therapist[]>(() => ayurEngine.getTherapists());
-  const [selectedTherapistId, setSelectedTherapistId] = useState<string>(() => therapists[1]?.id || 'tp-2');
+  const [selectedTherapistId, setSelectedTherapistId] = useState<string>(
+    () => therapists[1]?.id || 'tp-2'
+  );
   const [bookings, setBookings] = useState<Booking[]>(() => ayurEngine.getBookings());
   const [selectedReportBooking, setSelectedReportBooking] = useState<Booking | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -25,19 +40,24 @@ export const TherapistScheduleView: React.FC = () => {
     });
   }, []);
 
-  const currentTherapist = therapists.find((th) => th.id === selectedTherapistId) || therapists[0];
+  const currentTherapist =
+    therapists.find((th) => th.id === selectedTherapistId) || therapists[0];
 
-  // Fetch confirmed slots for this therapist
-  const therapistBookings = bookings.filter(
-    (b) => b.therapist_id === selectedTherapistId && ['Confirmed', 'Pending'].includes(b.status)
-  ).sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+  // Confirmed + pending slots for this therapist (preserved)
+  const therapistBookings = bookings
+    .filter(
+      (b) =>
+        b.therapist_id === selectedTherapistId &&
+        ['Confirmed', 'Pending'].includes(b.status)
+    )
+    .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
 
   const handleStartSession = (bookingId: string) => {
     setActiveSessionId(bookingId);
     ayurEngine.addAuditLog(
       'RPC_CALL',
       `Session Commenced by ${currentTherapist.name}`,
-      `Patient session in progress. Warm medicated oil stream initiated.`,
+      'Patient session in progress. Warm medicated oil stream initiated.',
       'info'
     );
   };
@@ -47,224 +67,214 @@ export const TherapistScheduleView: React.FC = () => {
     ayurEngine.addAuditLog(
       'RPC_CALL',
       `Session Completed by ${currentTherapist.name}`,
-      `Panchakarma session successfully completed and recorded.`,
+      'Panchakarma session successfully completed and recorded.',
       'success'
     );
   };
 
+  const hourNow = new Date().getHours();
+
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
-      
-      {/* Vaidya Profile Card (Professional Polish Dark Card) */}
-      <div className="bg-[#2D3A3A] text-white rounded-xl p-6 sm:p-7 shadow-md space-y-5">
-        
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          
-          <div className="flex items-center space-x-4">
-            <img
-              src={currentTherapist?.avatar_url}
-              alt={currentTherapist?.name}
-              className="w-14 h-14 rounded-full object-cover border-2 border-[#8B9D83] shadow-sm"
-            />
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-[#8B9D83]/20 text-[#8B9D83] border border-[#8B9D83]/30">
+    <div className="space-y-6 lg:space-y-8">
+      <PageHeader
+        eyebrow={new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
+        title="My schedule"
+        description="Today's treatment timeline with chamber assignments and pre-treatment notes."
+      />
+
+      {/* Practitioner header card */}
+      <Card className="p-5 sm:p-6 bg-forest-deep border-transparent">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+          <div className="flex items-center gap-4 min-w-0">
+            <Avatar src={currentTherapist?.avatar_url} name={currentTherapist?.name ?? ''} size={56} ring />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="font-display text-xl font-semibold text-white truncate">
+                  {currentTherapist?.name}
+                </h2>
+                <span className="inline-flex px-2 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] font-bold uppercase tracking-wider text-sage backdrop-blur-sm">
                   {currentTherapist?.status}
                 </span>
-                <span className="text-xs text-slate-300 font-mono">⭐ {currentTherapist?.rating} / 5.0</span>
               </div>
-              <h1 className="text-xl sm:text-2xl font-serif font-bold text-white mt-1">
-                {currentTherapist?.name}
-              </h1>
-              <p className="text-xs text-slate-300 mt-0.5">
-                {currentTherapist?.title} • {currentTherapist?.specialization}
+              <p className="mt-0.5 text-xs text-white/60 truncate">
+                {currentTherapist?.title} · {currentTherapist?.specialization}
               </p>
             </div>
           </div>
 
-          {/* Practitioner Switcher Dropdown */}
           <div className="w-full sm:w-auto">
-            <label className="block text-[11px] text-slate-300 mb-1 font-medium">
-              Switch Practitioner View:
+            <label htmlFor="therapist-switch" className="block text-[11px] font-medium text-sage mb-1.5">
+              Switch practitioner view
             </label>
-            <select
-              value={selectedTherapistId}
-              onChange={(e) => setSelectedTherapistId(e.target.value)}
-              className="w-full sm:w-60 bg-white/10 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-[#8B9D83]"
-            >
-              {therapists.map((th) => (
-                <option key={th.id} value={th.id} className="text-slate-900">
-                  {th.name} ({th.specialization.split('&')[0]})
-                </option>
-              ))}
-            </select>
-          </div>
-
-        </div>
-
-        {/* Practitioner Quick Stats */}
-        <div className="grid grid-cols-3 gap-3 pt-3 border-t border-white/10 text-center">
-          <div className="p-2.5 rounded-lg bg-white/5">
-            <p className="text-[11px] text-slate-300">Experience</p>
-            <p className="text-sm font-bold text-white">{currentTherapist?.experience_years} Years</p>
-          </div>
-          <div className="p-2.5 rounded-lg bg-white/5">
-            <p className="text-[11px] text-slate-300">Total Treated</p>
-            <p className="text-sm font-bold text-white">{currentTherapist?.completed_sessions} Patients</p>
-          </div>
-          <div className="p-2.5 rounded-lg bg-white/5">
-            <p className="text-[11px] text-slate-300">Today's Sessions</p>
-            <p className="text-sm font-bold text-[#8B9D83]">{therapistBookings.length} Slots</p>
+            <div className="relative">
+              <select
+                id="therapist-switch"
+                value={selectedTherapistId}
+                onChange={(e) => setSelectedTherapistId(e.target.value)}
+                className="w-full sm:w-64 h-11 rounded-xl bg-white/10 border border-white/15 pl-3 pr-10 text-xs font-medium text-white focus:outline-none focus:border-sage cursor-pointer appearance-none"
+              >
+                {therapists.map((th) => (
+                  <option key={th.id} value={th.id} className="text-charcoal">
+                    {th.name} · {th.status}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                aria-hidden
+                className="w-4 h-4 text-sage absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+              />
+            </div>
           </div>
         </div>
 
-      </div>
+        <dl className="mt-6 pt-5 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          {[
+            ['Experience', `${currentTherapist?.experience_years} yrs`],
+            ['Sessions done', `${currentTherapist?.completed_sessions}`],
+            ['Rating', `${currentTherapist?.rating} / 5`],
+            ["Today's slots", `${therapistBookings.length}`],
+          ].map(([k, v], i) => (
+            <div key={k} className={`rounded-xl bg-white/[0.05] border border-white/[0.07] py-3 ${i === 3 ? 'text-gold' : 'text-white'}`}>
+              <dt className="text-[10px] font-medium text-white/50 uppercase tracking-wider">{k}</dt>
+              <dd className="mt-1 font-display text-lg font-semibold inline-flex items-center gap-1">
+                {(k === 'Rating') && <Star className="w-3.5 h-3.5 fill-current" />}
+                {v}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </Card>
 
-      {/* Today's Schedule Card */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-7 shadow-sm space-y-5">
-        
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center space-x-2">
-            <Calendar className="w-5 h-5 text-[#8B9D83]" />
-            <h2 className="text-lg font-serif font-bold text-slate-900">
-              Today's Panchakarma Treatment Schedule
-            </h2>
-          </div>
-          <span className="text-xs font-mono font-semibold px-2.5 py-1 rounded-md bg-slate-100 text-slate-600">
-            {new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
-          </span>
+      {/* Timeline */}
+      <Card className="p-5 sm:p-6 space-y-5">
+        <div className="flex items-center justify-between pb-4 border-b border-line">
+          <h2 className="inline-flex items-center gap-2 font-display text-base font-semibold text-forest-deep">
+            <CalendarDays className="w-4 h-4 text-forest" /> Today's treatments
+          </h2>
+          <Badge tone="brand">{therapistBookings.length} sessions</Badge>
         </div>
 
         {therapistBookings.length === 0 ? (
-          <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-            <CheckCircle className="w-8 h-8 text-[#8B9D83] mx-auto mb-2" />
-            <p className="text-sm font-semibold text-slate-700">No scheduled sessions for this practitioner today</p>
-            <p className="text-xs text-slate-400 mt-1">
-              New bookings will appear dynamically as receptionist confirms them.
-            </p>
-          </div>
+          <EmptyState
+            icon={<CalendarDays />}
+            title="Your schedule is clear"
+            description="New sessions will appear here as soon as reception confirms them."
+          />
         ) : (
-          <div className="space-y-4">
-            {therapistBookings.map((b, idx) => {
+          <ol className="relative space-y-4 before:absolute before:left-[124px] before:top-2 before:bottom-2 before:w-px before:bg-line">
+            {therapistBookings.map((b) => {
               const isSessionActive = activeSessionId === b.id;
               const therapy = b.therapy;
               const room = b.room;
+              const startHour = new Date(b.start_time).getHours();
+              const isPast = startHour < hourNow && !isSessionActive;
 
               return (
-                <div
-                  key={b.id}
-                  className={`p-5 rounded-xl border transition-all ${
-                    isSessionActive
-                      ? 'bg-[#8B9D83]/10 border-[#8B9D83] ring-1 ring-[#8B9D83] shadow-sm'
-                      : 'bg-white border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  {/* Session Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-700 text-xs">
-                        #{idx + 1}
-                      </div>
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-base font-serif font-bold text-slate-900">
-                            {b.client_name}
-                          </span>
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            {b.prakriti || 'Vata-Pitta'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-400">Ref: {b.booking_ref} • {b.client_phone}</p>
-                      </div>
-                    </div>
-
-                    <div className="text-left sm:text-right">
-                      <span className="text-xs font-mono font-bold text-slate-800 block">
-                        {new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} -{' '}
-                        {new Date(b.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                      <span className="text-[11px] text-slate-400">{therapy?.duration_mins} Minutes Session</span>
-                    </div>
-                  </div>
-
-                  {/* Therapy & Chamber Details */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-3 text-xs">
-                    <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                      <span className="text-slate-400 block text-[11px]">Therapy Protocol</span>
-                      <span className="font-semibold text-slate-800 mt-0.5 block">{therapy?.name}</span>
-                      <span className="text-[11px] text-slate-500 italic">{therapy?.sanskrit_name}</span>
-                    </div>
-
-                    <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                      <span className="text-slate-400 block text-[11px]">Medicated Oil & Volume</span>
-                      <span className="font-semibold text-slate-800 mt-0.5 block">{therapy?.oil_type}</span>
-                      <span className="text-[11px] font-mono font-medium text-slate-700">{therapy?.oil_required_ml} mL Pre-heated</span>
-                    </div>
-
-                    <div className="p-3 rounded-lg bg-slate-50 border border-slate-100">
-                      <span className="text-slate-400 block text-[11px]">Droni Chamber Suite</span>
-                      <span className="font-semibold text-slate-800 mt-0.5 block">{room?.room_name}</span>
-                      <span className="text-[11px] text-slate-500">{room?.droni_wood}</span>
-                    </div>
-                  </div>
-
-                  {/* Client Medical Instructions */}
-                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-100 text-xs">
-                    <span className="font-semibold text-slate-700 block mb-0.5">Vaidya Pre-Treatment Notes:</span>
-                    <p className="text-slate-600 italic">
-                      "{b.medical_notes || 'Focus oleation on upper back and cervical vertebrae. Keep warm steam cabinet ready for 10 mins swedana post-therapy.'}"
+                <li key={b.id} className="relative flex gap-4">
+                  {/* Time marker */}
+                  <div className="w-[104px] shrink-0 pt-4 text-right">
+                    <p className={`font-mono text-sm font-bold ${isSessionActive ? 'text-forest' : isPast ? 'text-muted' : 'text-charcoal'}`}>
+                      {new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
+                    <p className="text-[11px] text-muted">{therapy?.duration_mins} min</p>
                   </div>
 
-                  {/* Action Bar: View Report + Start/Finish */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-                    
-                    {/* View Report Button */}
-                    <button
-                      onClick={() => setSelectedReportBooking(b)}
-                      className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 flex items-center space-x-1.5 transition-colors shadow-sm"
-                    >
-                      <FileText className="w-4 h-4 text-[#8B9D83]" />
-                      <span>Open Medical Dossier PDF</span>
-                    </button>
+                  {/* Node */}
+                  <span
+                    aria-hidden
+                    className={`relative z-10 mt-6 w-2.5 h-2.5 shrink-0 rounded-full ring-4 ${
+                      isSessionActive
+                        ? 'bg-forest ring-sage-soft'
+                        : isPast
+                          ? 'bg-muted/40 ring-ivory'
+                          : 'bg-sage ring-ivory'
+                    }`}
+                  />
 
-                    {/* Start / Finish Controls */}
-                    <div className="flex items-center space-x-2">
-                      {isSessionActive ? (
-                        <button
-                          onClick={() => handleCompleteSession(b.id)}
-                          className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm flex items-center space-x-1.5 transition-all"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                          <span>Mark Session Completed</span>
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleStartSession(b.id)}
-                          className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-[#2D3A3A] hover:bg-[#1E2525] shadow-sm flex items-center space-x-1.5 transition-all"
-                        >
-                          <Play className="w-3.5 h-3.5 fill-current" />
-                          <span>Commence Session</span>
-                        </button>
+                  {/* Card */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className={`flex-1 rounded-2xl border p-4 sm:p-5 transition-colors ${
+                      isSessionActive
+                        ? 'bg-mint border-forest/40 shadow-[0_8px_30px_rgba(23,63,53,0.10)]'
+                        : 'surface'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-line/70">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-display text-base font-semibold text-charcoal truncate">{b.client_name}</h3>
+                          {b.prakriti && <Badge tone="brand">{b.prakriti}</Badge>}
+                          <StatusBadge status={b.status} />
+                        </div>
+                        <p className="mt-1 text-[11px] text-muted">Ref {b.booking_ref} · {b.client_phone}</p>
+                      </div>
+                      {isSessionActive && (
+                        <Badge tone="success" className="animate-pulse shrink-0">
+                          <Play className="w-3 h-3 fill-current" /> In progress
+                        </Badge>
                       )}
                     </div>
 
-                  </div>
+                    <div className="my-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                      <DetailTile icon={<Droplets className="w-3.5 h-3.5" />} caption="Protocol" title={therapy?.name} sub={therapy?.sanskrit_name} />
+                      <DetailTile icon={<Clock className="w-3.5 h-3.5" />} caption="Medicated oil" title={therapy?.oil_type} sub={`${therapy?.oil_required_ml} mL pre-heated`} />
+                      <DetailTile icon={<MapPin className="w-3.5 h-3.5" />} caption="Chamber" title={room?.room_name} sub={room?.droni_wood} />
+                    </div>
 
-                </div>
+                    {b.medical_notes && (
+                      <p className="rounded-xl bg-ivory border border-line px-3.5 py-2.5 text-xs text-muted leading-relaxed italic">
+                        “{b.medical_notes}”
+                      </p>
+                    )}
+
+                    <div className="mt-4 pt-3 border-t border-line/70 flex flex-wrap items-center justify-between gap-3">
+                      <Button variant="secondary" size="sm" onClick={() => setSelectedReportBooking(b)} icon={<FileText className="w-4 h-4" />}>
+                        Medical dossier
+                      </Button>
+                      <div className="flex items-center gap-2">
+                        {isSessionActive ? (
+                          <Button size="sm" onClick={() => handleCompleteSession(b.id)} icon={<CheckCircle2 className="w-4 h-4" />}>
+                            Mark complete
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => handleStartSession(b.id)}
+                            icon={<Play className="w-3.5 h-3.5 fill-current" />}
+                          >
+                            Commence session
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                </li>
               );
             })}
-          </div>
+          </ol>
         )}
+      </Card>
 
-      </div>
-
-      {/* Medical Report Dossier Modal */}
-      <MedicalReportModal
-        booking={selectedReportBooking}
-        onClose={() => setSelectedReportBooking(null)}
-      />
-
+      <MedicalReportModal booking={selectedReportBooking} onClose={() => setSelectedReportBooking(null)} />
     </div>
   );
 };
+
+const DetailTile: React.FC<{
+  icon: React.ReactNode;
+  caption?: string;
+  title?: string;
+  sub?: string;
+}> = ({ icon, caption, title, sub }) => (
+  <div className="rounded-xl bg-ivory border border-line p-3">
+    <p className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted">
+      {icon}
+      {caption}
+    </p>
+    <p className="mt-1 font-semibold text-charcoal truncate">{title}</p>
+    <p className="text-[11px] text-muted truncate italic">{sub}</p>
+  </div>
+);

@@ -1,62 +1,87 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Sparkles, 
-  Calendar as CalendarIcon, 
-  Clock, 
-  User, 
-  CheckCircle2, 
-  UploadCloud, 
-  FileText, 
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  Leaf,
   ArrowRight,
-  Check,
-  X,
-  Heart,
-  ShieldCheck,
-  Leaf
+  ArrowLeft,
+  Sparkles,
+  Sun,
+  Sunset,
+  MoonStar,
+  CircleCheck,
+  CalendarPlus,
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 import { ayurEngine } from '../services/engine';
-import { Therapy, Therapist, ResourceRoom, BookingCreationRPCResponse } from '../types/ayursutra';
+import type { Therapy, Therapist, ResourceRoom, BookingCreationRPCResponse } from '../types/ayursutra';
+import { Button, Badge, Card, Field, Input, Select, Textarea, FilterChip } from './ui';
+import {
+  Stepper,
+  StepPanel,
+  TherapyCard,
+  PractitionerCard,
+  UploadZone,
+} from './client/Parts';
 
 interface ClientBookingPortalProps {
   onBookingSuccess?: () => void;
   onNavigateToDesk?: () => void;
 }
 
+const TIME_SLOTS = [
+  { hour: 8, label: '08:00 AM', period: 'Morning Oleation' },
+  { hour: 9, label: '09:00 AM', period: 'Morning Oleation' },
+  { hour: 10, label: '10:00 AM', period: 'Mid-Morning Session' },
+  { hour: 11, label: '11:00 AM', period: 'Mid-Morning Session' },
+  { hour: 14, label: '02:00 PM', period: 'Afternoon Rejuvenation' },
+  { hour: 15, label: '03:00 PM', period: 'Afternoon Rejuvenation' },
+  { hour: 16, label: '04:00 PM', period: 'Evening Rasayana' },
+  { hour: 17, label: '05:00 PM', period: 'Evening Rasayana' },
+];
+
+const slotGroup = (hour: number): 'Morning' | 'Afternoon' | 'Evening' =>
+  hour < 12 ? 'Morning' : hour < 16 ? 'Afternoon' : 'Evening';
+
+const GROUP_ICON = {
+  Morning: <Sun className="w-3.5 h-3.5" />,
+  Afternoon: <Sunset className="w-3.5 h-3.5" />,
+  Evening: <MoonStar className="w-3.5 h-3.5" />,
+};
+
+const initialDetails = {
+  clientName: 'Dr. Siddharth Varma',
+  clientPhone: '+91 98401 23456',
+  clientEmail: 'siddharth.varma@example.com',
+  prakriti: 'Vata-Pitta',
+  medicalNotes:
+    'Experiencing cervical stiffness and cognitive stress. Requesting gentle warm herbal oleation.',
+};
+
 export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
   onBookingSuccess,
   onNavigateToDesk,
 }) => {
-  // State from AyurSutra engine
+  // Engine state (preserved)
   const [therapies, setTherapies] = useState<Therapy[]>(() => ayurEngine.getTherapies());
   const [therapists, setTherapists] = useState<Therapist[]>(() => ayurEngine.getTherapists());
   const [rooms, setRooms] = useState<ResourceRoom[]>(() => ayurEngine.getRooms());
 
-  // Form State
-  const [selectedTherapyId, setSelectedTherapyId] = useState<string>('th-101');
-  const [selectedTherapistId, setSelectedTherapistId] = useState<string>('tp-2');
-  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [selectedHour, setSelectedHour] = useState<number>(10); // 10:00 AM
-
-  // Client Details & Medical Dossier
-  const [clientName, setClientName] = useState('Dr. Siddharth Varma');
-  const [clientPhone, setClientPhone] = useState('+91 98401 23456');
-  const [clientEmail, setClientEmail] = useState('siddharth.varma@example.com');
-  const [clientAge, setClientAge] = useState<number>(44);
-  const [clientGender, setClientGender] = useState<'Male' | 'Female' | 'Other'>('Male');
-  const [prakriti, setPrakriti] = useState<string>('Vata-Pitta');
-  const [medicalNotes, setMedicalNotes] = useState('Experiencing cervical stiffness and cognitive stress. Requesting gentle warm herbal oleation.');
-
-  // Mock Storage State
-  const [uploadedFileName, setUploadedFileName] = useState<string>('siddharth_varma_nadi_analysis.pdf');
-  const [isUploading, setIsUploading] = useState<boolean>(false);
-
-  // Submission State
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  // Form state (preserved defaults)
+  const [selectedTherapyId, setSelectedTherapyId] = useState('th-101');
+  const [selectedTherapistId, setSelectedTherapistId] = useState('tp-2');
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [selectedHour, setSelectedHour] = useState(10);
+  const [details, setDetails] = useState(initialDetails);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(
+    'siddharth_varma_nadi_analysis.pdf'
+  );
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [rpcResponse, setRpcResponse] = useState<BookingCreationRPCResponse | null>(null);
-  const [filterCategory, setFilterCategory] = useState<string>('ALL');
+  const [filterCategory, setFilterCategory] = useState('ALL');
 
-  // Subscribe to Engine changes
+  // New multi-step state: 1 Treatment · 2 Practitioner · 3 Schedule · 4 Details · 5 Confirmation
+  const [step, setStep] = useState(1);
+
   useEffect(() => {
     return ayurEngine.subscribe(() => {
       setTherapies(ayurEngine.getTherapies());
@@ -69,26 +94,37 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
     () => therapies.find((t) => t.id === selectedTherapyId) || therapies[0],
     [therapies, selectedTherapyId]
   );
-
   const selectedTherapist = useMemo(
     () => therapists.find((th) => th.id === selectedTherapistId) || therapists[0],
     [therapists, selectedTherapistId]
   );
-
-  // Automatically find an available operational room for the client behind the scenes
   const allocatedRoomId = useMemo(() => {
     const operationalRoom = rooms.find((r) => r.is_operational) || rooms[0];
     return operationalRoom?.id || 'rm-101';
   }, [rooms]);
 
-  // Compute ISO start time
   const targetStartTimeIso = useMemo(() => {
     const d = new Date(selectedDate);
     d.setHours(selectedHour, 0, 0, 0);
     return d.toISOString();
   }, [selectedDate, selectedHour]);
 
-  // Handle Mock Storage Upload
+  const filteredTherapies = useMemo(
+    () =>
+      filterCategory === 'ALL'
+        ? therapies
+        : therapies.filter((t) => t.category === filterCategory),
+    [therapies, filterCategory]
+  );
+
+  // Validation gates per step
+  const canContinue = useMemo(() => {
+    if (step === 1) return !!selectedTherapy;
+    if (step === 2) return !!selectedTherapist && selectedTherapist.status !== 'On Leave';
+    if (step === 3) return !!selectedDate && !!selectedHour;
+    return true;
+  }, [step, selectedTherapy, selectedTherapist, selectedDate, selectedHour]);
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -99,492 +135,426 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
     }, 600);
   };
 
-  // Submit Treatment Request via PostgreSQL RPC function
+  // Preserved booking submission via PostgreSQL RPC
   const handleBookSession = async () => {
-    if (!clientName.trim()) {
-      alert('Please enter your full name.');
-      return;
-    }
-
+    if (!details.clientName.trim()) return;
     setIsSubmitting(true);
     setRpcResponse(null);
 
-    const reportUrl = uploadedFileName 
+    const reportUrl = uploadedFileName
       ? `https://ayursutra.supabase.co/storage/v1/object/public/medical-reports/${Date.now()}_${uploadedFileName}`
       : undefined;
 
     const response = await ayurEngine.createPanchakarmaBookingRPC({
-      client_name: clientName,
-      client_phone: clientPhone,
-      client_email: clientEmail,
-      client_age: clientAge,
-      client_gender: clientGender,
-      prakriti: prakriti,
+      client_name: details.clientName,
+      client_phone: details.clientPhone,
+      client_email: details.clientEmail,
+      prakriti: details.prakriti,
       therapy_id: selectedTherapyId,
       therapist_id: selectedTherapistId,
       room_id: allocatedRoomId,
       start_time: targetStartTimeIso,
       report_url: reportUrl,
       report_file_name: uploadedFileName || undefined,
-      medical_notes: medicalNotes,
+      medical_notes: details.medicalNotes,
     });
 
     setIsSubmitting(false);
-    setRpcResponse(response);
-
     if (response.success) {
-      try {
-        confetti({
-          particleCount: 70,
-          spread: 60,
-          origin: { y: 0.6 },
-          colors: ['#8B9D83', '#2D3A3A', '#10b981', '#f59e0b'],
-        });
-      } catch (e) {
-        // ignore if canvas unavailable
-      }
+      setRpcResponse(response);
+      setStep(5);
       if (onBookingSuccess) onBookingSuccess();
+    } else {
+      setRpcResponse(response);
     }
   };
 
-  const timeSlots = [
-    { hour: 8, label: '08:00 AM', period: 'Morning Oleation' },
-    { hour: 9, label: '09:00 AM', period: 'Morning Oleation' },
-    { hour: 10, label: '10:00 AM', period: 'Mid-Morning Session' },
-    { hour: 11, label: '11:00 AM', period: 'Mid-Morning Session' },
-    { hour: 14, label: '02:00 PM', period: 'Afternoon Rejuvenation' },
-    { hour: 15, label: '03:00 PM', period: 'Afternoon Rejuvenation' },
-    { hour: 16, label: '04:00 PM', period: 'Evening Rasayana' },
-    { hour: 17, label: '05:00 PM', period: 'Evening Rasayana' },
-  ];
+  const resetFlow = () => {
+    setStep(1);
+    setRpcResponse(null);
+    setUploadedFileName(null);
+  };
 
-  const filteredTherapies = useMemo(() => {
-    if (filterCategory === 'ALL') return therapies;
-    return therapies.filter((t) => t.category === filterCategory);
-  }, [therapies, filterCategory]);
+  const summaryRows = (
+    <>
+      <SummaryRow label="Treatment" value={selectedTherapy?.name} strong />
+      <SummaryRow label="Practitioner" value={selectedTherapist?.name} />
+      <SummaryRow
+        label="Schedule"
+        value={
+          step >= 3
+            ? `${new Date(targetStartTimeIso).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} · ${TIME_SLOTS.find((s) => s.hour === selectedHour)?.label}`
+            : 'Not selected'
+        }
+      />
+      <SummaryRow label="Duration" value={`${selectedTherapy?.duration_mins ?? 60} minutes`} />
+    </>
+  );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-      
-      {/* Patient Welcome Hero Card */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="max-w-3xl space-y-2">
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-[#8B9D83]/15 text-[#2D3A3A] text-xs font-semibold">
-            <Leaf className="w-3.5 h-3.5 text-[#8B9D83]" />
-            <span>Ayurvedic Holistic Healing Portal</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-serif font-bold text-slate-900 tracking-tight">
-            Schedule Your Panchakarma Treatment
+    <div className="space-y-6 lg:space-y-8">
+      {/* Greeting hero */}
+      <section className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+        <div>
+          <p className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-sage">
+            <Leaf className="w-3.5 h-3.5" /> Patient portal
+          </p>
+          <h1 className="mt-2 font-display text-[28px] sm:text-[34px] leading-tight font-semibold text-forest-deep tracking-tight">
+            Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, Siddharth
           </h1>
-          <p className="text-sm text-slate-500 leading-relaxed">
-            Experience traditional Vedic healing customized to your unique doshic constitution. Choose your therapy, preferred practitioner, and convenient time slot below.
+          <p className="mt-1 text-sm text-muted max-w-xl leading-relaxed">
+            Your path to balanced wellbeing continues here. Book your next Panchakarma session in four calm steps.
           </p>
         </div>
+        {rpcResponse?.booking_ref && step === 5 && (
+          <Badge tone="success" className="shrink-0 self-start md:self-end">
+            <CircleCheck className="w-3.5 h-3.5" /> Booking {rpcResponse.booking_ref}
+          </Badge>
+        )}
+      </section>
 
-        <div className="flex sm:flex-col items-center justify-center p-4 bg-slate-50 rounded-xl border border-slate-100 text-center min-w-[180px]">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">AyurSutra Clinic</span>
-          <span className="text-sm font-serif font-bold text-[#2D3A3A] mt-0.5">Certified Vaidyas</span>
-          <span className="text-[11px] text-emerald-600 font-semibold mt-1 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Online Intake Active
-          </span>
+      {/* Stepper */}
+      {step <= 4 && (
+        <Card className="px-5 py-4 overflow-x-auto">
+          <Stepper current={step} />
+        </Card>
+      )}
+
+      <div className={step <= 4 ? 'grid grid-cols-1 xl:grid-cols-12 gap-6' : ''}>
+        {/* Main step content */}
+        <div className={step <= 4 ? 'xl:col-span-8 space-y-6' : 'mx-auto max-w-2xl w-full'}>
+          <AnimatePresence mode="wait">
+            {/* STEP 1 · TREATMENT */}
+            {step === 1 && (
+              <StepPanel key="s1" stepKey={1}>
+                <Card className="p-5 sm:p-6 space-y-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-display text-lg font-semibold text-forest-deep">Select your therapy</h2>
+                      <p className="text-xs text-muted mt-0.5">Classical Panchakarma protocols tailored to your constitution.</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <FilterChip active={filterCategory === 'ALL'} onClick={() => setFilterCategory('ALL')}>
+                        All
+                      </FilterChip>
+                      <FilterChip active={filterCategory === 'Purvakarma'} onClick={() => setFilterCategory('Purvakarma')}>
+                        Purvakarma
+                      </FilterChip>
+                      <FilterChip active={filterCategory === 'Pradhanakarma'} onClick={() => setFilterCategory('Pradhanakarma')}>
+                        Pradhanakarma
+                      </FilterChip>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 max-h-[480px] overflow-y-auto pr-1 -mr-1">
+                    {filteredTherapies.map((t) => (
+                      <TherapyCard
+                        key={t.id}
+                        therapy={t}
+                        selected={t.id === selectedTherapyId}
+                        onSelect={() => setSelectedTherapyId(t.id)}
+                      />
+                    ))}
+                  </div>
+                </Card>
+              </StepPanel>
+            )}
+
+            {/* STEP 2 · PRACTITIONER */}
+            {step === 2 && (
+              <StepPanel key="s2" stepKey={2}>
+                <Card className="p-5 sm:p-6 space-y-5">
+                  <div>
+                    <h2 className="font-display text-lg font-semibold text-forest-deep">Choose your practitioner</h2>
+                    <p className="text-xs text-muted mt-0.5">Certified Vaidyas matched to your therapy protocol.</p>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {therapists.map((th) => (
+                      <PractitionerCard
+                        key={th.id}
+                        therapist={th}
+                        selected={th.id === selectedTherapistId}
+                        onSelect={() => setSelectedTherapistId(th.id)}
+                      />
+                    ))}
+                  </div>
+                </Card>
+              </StepPanel>
+            )}
+
+            {/* STEP 3 · SCHEDULE */}
+            {step === 3 && (
+              <StepPanel key="s3" stepKey={3}>
+                <Card className="p-5 sm:p-6 space-y-6">
+                  <div>
+                    <h2 className="font-display text-lg font-semibold text-forest-deep">Pick date &amp; time</h2>
+                    <p className="text-xs text-muted mt-0.5">Sessions are aligned with clinic oleation windows.</p>
+                  </div>
+
+                  <Field label="Preferred date" htmlFor="booking-date">
+                    <input
+                      id="booking-date"
+                      type="date"
+                      value={selectedDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="w-full h-12 rounded-xl border border-line bg-white/80 px-4 text-sm text-charcoal focus:outline-none focus:border-sage focus:ring-3 focus:ring-sage/15 cursor-pointer"
+                    />
+                  </Field>
+
+                  {(['Morning', 'Afternoon', 'Evening'] as const).map((group) => {
+                    const slots = TIME_SLOTS.filter((s) => slotGroup(s.hour) === group);
+                    if (!slots.length) return null;
+                    return (
+                      <div key={group}>
+                        <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-muted mb-2.5">
+                          {GROUP_ICON[group]} {group}
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5" role="radiogroup" aria-label={`${group} time slots`}>
+                          {slots.map((slot) => {
+                            const active = selectedHour === slot.hour;
+                            return (
+                              <button
+                                key={slot.hour}
+                                type="button"
+                                role="radio"
+                                aria-checked={active}
+                                onClick={() => setSelectedHour(slot.hour)}
+                                className={`min-h-[52px] rounded-xl border px-2 text-center cursor-pointer transition-colors ${
+                                  active
+                                    ? 'bg-forest text-white border-forest shadow-sm'
+                                    : 'surface hover:border-sage/40 hover:bg-mint/50'
+                                }`}
+                              >
+                                <span className={`block text-xs font-bold ${active ? '' : 'text-charcoal'}`}>
+                                  {slot.label}
+                                </span>
+                                <span className={`block text-[10px] mt-0.5 ${active ? 'text-white/70' : 'text-muted'}`}>
+                                  {slot.period}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </Card>
+              </StepPanel>
+            )}
+
+            {/* STEP 4 · DETAILS */}
+            {step === 4 && (
+              <StepPanel key="s4" stepKey={4}>
+                <div className="space-y-6">
+                  <Card className="p-5 sm:p-6 space-y-5">
+                    <h2 className="font-display text-lg font-semibold text-forest-deep">Your details</h2>
+
+                    <fieldset className="space-y-4">
+                      <legend className="text-[11px] font-bold uppercase tracking-widest text-sage mb-3">Personal details</legend>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <Field label="Full name" htmlFor="c-name" required>
+                          <Input id="c-name" value={details.clientName} onChange={(e) => setDetails({ ...details, clientName: e.target.value })} placeholder="e.g. Siddharth Varma" />
+                        </Field>
+                        <Field label="Phone number" htmlFor="c-phone">
+                          <Input id="c-phone" type="tel" value={details.clientPhone} onChange={(e) => setDetails({ ...details, clientPhone: e.target.value })} placeholder="+91 98XXX XXXXX" />
+                        </Field>
+                        <Field label="Email address" htmlFor="c-email">
+                          <Input id="c-email" type="email" value={details.clientEmail} onChange={(e) => setDetails({ ...details, clientEmail: e.target.value })} placeholder="you@example.com" />
+                        </Field>
+                        <Field label="Prakriti (dosha constitution)" htmlFor="c-prakriti">
+                          <Select id="c-prakriti" value={details.prakriti} onChange={(e) => setDetails({ ...details, prakriti: e.target.value })}>
+                            <option>Vata-Pitta</option>
+                            <option>Pitta-Kapha</option>
+                            <option>Vata-Kapha</option>
+                            <option>Tridoshic</option>
+                            <option>Pure Vata</option>
+                            <option>Pure Pitta</option>
+                          </Select>
+                        </Field>
+                      </div>
+                    </fieldset>
+
+                    <fieldset className="space-y-2">
+                      <legend className="text-[11px] font-bold uppercase tracking-widest text-sage mb-1">Medical notes</legend>
+                      <Textarea
+                        aria-label="Symptoms or special requests for your Vaidya"
+                        rows={3}
+                        value={details.medicalNotes}
+                        onChange={(e) => setDetails({ ...details, medicalNotes: e.target.value })}
+                        placeholder="Mention stiffness, digestion, stress, sleep patterns, or previous therapies…"
+                      />
+                    </fieldset>
+                  </Card>
+
+                  <Card className="p-5 sm:p-6 space-y-3">
+                    <h3 className="font-display text-base font-semibold text-forest-deep">Medical documents</h3>
+                    <p className="text-xs text-muted">Helps your Vaidya prepare personalized herbal formulations before arrival.</p>
+                    <UploadZone
+                      fileName={uploadedFileName}
+                      uploading={isUploading}
+                      onFile={handleFileUpload}
+                      onRemove={() => setUploadedFileName(null)}
+                    />
+                  </Card>
+                </div>
+              </StepPanel>
+            )}
+          </AnimatePresence>
+
+          {/* Navigation buttons (steps 1-4) */}
+          {step <= 4 && (
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <Button
+                variant="ghost"
+                onClick={() => setStep((s) => Math.max(1, s - 1))}
+                disabled={step === 1}
+                icon={<ArrowLeft className="w-4 h-4" />}
+              >
+                Back
+              </Button>
+              {step < 4 ? (
+                <Button
+                  size="lg"
+                  disabled={!canContinue}
+                  onClick={() => canContinue && setStep((s) => Math.min(4, s + 1))}
+                >
+                  Continue <ArrowRight className="w-4 h-4" />
+                </Button>
+              ) : (
+                <Button
+                  size="lg"
+                  loading={isSubmitting}
+                  onClick={handleBookSession}
+                  icon={<CalendarPlus className="w-4 h-4" />}
+                >
+                  Request booking
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Booking failure feedback (stays on step 4) */}
+          {step === 4 && rpcResponse && !rpcResponse.success && (
+            <Card className="p-4 border-warning/30 bg-amber-50/60">
+              <p className="text-xs font-semibold text-warning">{rpcResponse.message}</p>
+              {rpcResponse.error_message && (
+                <p className="mt-1 text-[11px] text-muted">{rpcResponse.error_message}</p>
+              )}
+            </Card>
+          )}
         </div>
+
+        {/* Sticky summary rail (desktop, steps 1-4) */}
+        {step <= 4 && (
+          <aside className="hidden xl:block xl:col-span-4">
+            <div className="sticky top-24 glass rounded-2xl p-6 space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-line">
+                <p className="inline-flex items-center gap-2 font-display text-sm font-semibold text-forest-deep">
+                  <Sparkles className="w-4 h-4 text-gold" /> Booking summary
+                </p>
+                <Badge tone="brand">Panchakarma</Badge>
+              </div>
+              <div className="space-y-3">{summaryRows}</div>
+              <div className="pt-3 border-t border-line flex items-baseline justify-between">
+                <span className="text-xs font-semibold text-forest-deep">Treatment fee</span>
+                <span className="font-display text-xl font-semibold text-forest-deep">
+                  ₹{selectedTherapy?.price ?? 0}
+                </span>
+              </div>
+            </div>
+          </aside>
+        )}
       </div>
 
-      {/* Main Grid: 2 Columns */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Left Column: Form & Therapy Selection (7 Cols) */}
-        <div className="lg:col-span-7 space-y-6">
-          
-          {/* STEP 1: Select Therapy */}
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Step 1 of 3</span>
-                <h2 className="text-lg font-serif font-bold text-slate-900">Select Classical Therapy</h2>
-              </div>
-              
-              {/* Category Filter Pills */}
-              <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-none">
-                {['ALL', 'Purvakarma', 'Pradhanakarma'].map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setFilterCategory(cat)}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                      filterCategory === cat
-                        ? 'bg-[#2D3A3A] text-white font-semibold shadow-sm'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-1">
-              {filteredTherapies.map((t) => {
-                const isSelected = t.id === selectedTherapyId;
-
-                return (
-                  <div
-                    key={t.id}
-                    onClick={() => setSelectedTherapyId(t.id)}
-                    className={`cursor-pointer p-4 rounded-xl border transition-all relative ${
-                      isSelected
-                        ? 'bg-[#8B9D83]/10 border-[#8B9D83] ring-1 ring-[#8B9D83] shadow-sm'
-                        : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/70'
-                    }`}
-                  >
-                    {isSelected && (
-                      <div className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-[#8B9D83] text-white flex items-center justify-center">
-                        <Check className="w-3 h-3 stroke-[3]" />
-                      </div>
-                    )}
-                    <div className="pr-5">
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                        {t.category}
-                      </span>
-                      <h3 className="font-serif font-bold text-slate-900 text-base mt-1.5">{t.name}</h3>
-                      <p className="text-xs text-slate-500 line-clamp-1 italic">{t.sanskrit_name}</p>
-                    </div>
-
-                    <p className="text-[11px] text-slate-600 mt-2 line-clamp-2 leading-relaxed">
-                      {t.description}
-                    </p>
-
-                    <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {t.duration_mins} mins
-                      </span>
-                      <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-                        {t.dosha_target || 'Tridoshic Balance'}
-                      </span>
-                      <span className="font-bold text-slate-900">₹{t.price}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* STEP 2: Date & Time Schedule + Practitioner Preference */}
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Step 2 of 3</span>
-              <h2 className="text-lg font-serif font-bold text-slate-900">Choose Date & Practitioner</h2>
-            </div>
-
-            {/* Date Picker */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
-                <CalendarIcon className="w-3.5 h-3.5 text-slate-500" />
-                Preferred Date
-              </label>
-              <input
-                type="date"
-                value={selectedDate}
-                min={new Date().toISOString().split('T')[0]}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83] focus:ring-1 focus:ring-[#8B9D83]"
+      {/* STEP 5 · CONFIRMATION */}
+      {step === 5 && rpcResponse?.success && (
+        <StepPanel key="s5" stepKey={5}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+            className="max-w-2xl mx-auto"
+          >
+            <Card className="overflow-hidden rounded-3xl">
+            <div className="bg-forest-deep relative px-8 py-10 text-center overflow-hidden">
+              <div
+                aria-hidden
+                className="absolute inset-0 opacity-50"
+                style={{
+                  background:
+                    'radial-gradient(420px 260px at 50% -20%, rgba(127,165,141,.45), transparent 65%)',
+                }}
               />
-            </div>
-
-            {/* Time Slot Picker */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-slate-500" />
-                Select Preferred Time Slot
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {timeSlots.map((slot) => {
-                  const isSelected = selectedHour === slot.hour;
-                  return (
-                    <button
-                      key={slot.hour}
-                      type="button"
-                      onClick={() => setSelectedHour(slot.hour)}
-                      className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all text-center ${
-                        isSelected
-                          ? 'bg-[#2D3A3A] text-white shadow-sm font-bold'
-                          : 'bg-slate-50 border border-slate-200 text-slate-700 hover:bg-slate-100 hover:border-slate-300'
-                      }`}
-                    >
-                      <span>{slot.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Practitioner Selection */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-[#8B9D83]" />
-                Preferred Certified Vaidya / Practitioner
-              </label>
-              <select
-                value={selectedTherapistId}
-                onChange={(e) => setSelectedTherapistId(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-xs text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-              >
-                {therapists.map((th) => (
-                  <option key={th.id} value={th.id}>
-                    {th.name} ({th.title} • {th.specialization.split('&')[0]}) - ⭐ {th.rating}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-          </div>
-
-          {/* STEP 3: Client Details & Health Dossier */}
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
-            <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Step 3 of 3</span>
-              <h2 className="text-lg font-serif font-bold text-slate-900">Your Health Profile & Intake</h2>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Full Name *</label>
-                <input
-                  type="text"
-                  value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
-                  placeholder="e.g. Dr. Siddharth Varma"
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Phone Number</label>
-                <input
-                  type="text"
-                  value={clientPhone}
-                  onChange={(e) => setClientPhone(e.target.value)}
-                  placeholder="+91 98XXX XXXXX"
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Email Address</label>
-                <input
-                  type="email"
-                  value={clientEmail}
-                  onChange={(e) => setClientEmail(e.target.value)}
-                  placeholder="client@example.com"
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Prakriti (Dosha Constitution)</label>
-                <select
-                  value={prakriti}
-                  onChange={(e) => setPrakriti(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                >
-                  <option value="Vata-Pitta">Vata-Pitta (Primary)</option>
-                  <option value="Pitta-Kapha">Pitta-Kapha</option>
-                  <option value="Vata-Kapha">Vata-Kapha</option>
-                  <option value="Tridoshic">Tridoshic (Balanced)</option>
-                  <option value="Pure Vata">Pure Vata</option>
-                  <option value="Pure Pitta">Pure Pitta</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Health Symptoms */}
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Symptoms or Special Requests for Vaidya</label>
-              <textarea
-                rows={2}
-                value={medicalNotes}
-                onChange={(e) => setMedicalNotes(e.target.value)}
-                placeholder="Mention any stiffness, digestion, stress, sleep patterns, or previous therapies..."
-                className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-              />
-            </div>
-
-            {/* Medical Report Upload (Client Perspective) */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-[#8B9D83]" />
-                  Upload Previous Ayurvedic or Diagnostic Report (Optional)
-                </span>
-                <span className="text-[11px] text-slate-400 font-normal">PDF or Image</span>
-              </label>
-
-              <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center bg-slate-50 hover:bg-slate-100/70 transition-colors">
-                <input
-                  type="file"
-                  id="pdf-upload"
-                  accept=".pdf,.png,.jpg"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <label htmlFor="pdf-upload" className="cursor-pointer block">
-                  <UploadCloud className="w-6 h-6 text-[#8B9D83] mx-auto mb-1" />
-                  <p className="text-xs font-semibold text-slate-700">
-                    Click to attach Nadi pulse scan, lab report, or prescription
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Ensures our Vaidya prepares personalized herbal decoctions before your arrival
-                  </p>
-                </label>
-
-                {isUploading && (
-                  <div className="mt-3 flex items-center justify-center space-x-2 text-xs text-[#8B9D83] font-medium">
-                    <span className="w-3.5 h-3.5 rounded-full border-2 border-[#8B9D83] border-t-transparent animate-spin"></span>
-                    <span>Uploading medical report securely...</span>
-                  </div>
-                )}
-
-                {uploadedFileName && !isUploading && (
-                  <div className="mt-3 inline-flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 shadow-sm">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span className="font-mono font-medium">{uploadedFileName}</span>
-                    <button
-                      type="button"
-                      onClick={() => setUploadedFileName('')}
-                      className="text-slate-400 hover:text-red-500 ml-2"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* Right Column: Appointment Summary & Direct Booking (5 Cols) */}
-        <div className="lg:col-span-5 space-y-6">
-          
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm sticky top-24 space-y-5">
-            
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center space-x-2">
-                <Sparkles className="w-5 h-5 text-[#8B9D83]" />
-                <h3 className="font-serif font-bold text-slate-900">Treatment Summary</h3>
-              </div>
-              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                Panchakarma Care
+              <span className="relative inline-flex w-16 h-16 rounded-full bg-white/10 border border-white/15 items-center justify-center backdrop-blur-sm">
+                <CircleCheck className="w-8 h-8 text-sage" strokeWidth={2.2} />
               </span>
-            </div>
-
-            {/* Treatment Details Overview */}
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-3 text-xs">
-              <div className="flex justify-between items-start text-slate-600">
-                <span>Selected Protocol:</span>
-                <span className="font-semibold text-slate-900 text-right">{selectedTherapy?.name}</span>
-              </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Vedic Sanskrit Name:</span>
-                <span className="italic text-slate-700">{selectedTherapy?.sanskrit_name}</span>
-              </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Session Duration:</span>
-                <span className="font-semibold text-slate-800">{selectedTherapy?.duration_mins} Minutes</span>
-              </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Assigned Vaidya:</span>
-                <span className="font-semibold text-slate-800">{selectedTherapist?.name}</span>
-              </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Scheduled Timing:</span>
-                <span className="font-semibold text-slate-800">
-                  {new Date(targetStartTimeIso).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })},{' '}
-                  {selectedHour}:00
-                </span>
-              </div>
-              <div className="flex justify-between text-slate-600 pt-2 border-t border-slate-200">
-                <span className="font-medium text-slate-800">Treatment Fee:</span>
-                <span className="font-bold text-lg text-[#2D3A3A]">₹{selectedTherapy?.price}</span>
-              </div>
-            </div>
-
-            {/* Ayurvedic Clinical Guarantee */}
-            <div className="p-3.5 rounded-lg bg-[#8B9D83]/10 border border-[#8B9D83]/20 text-xs text-slate-700 space-y-1.5">
-              <div className="flex items-center space-x-1.5 font-semibold text-[#2D3A3A]">
-                <Heart className="w-4 h-4 text-[#8B9D83]" />
-                <span>Personalized Vedic Care Guarantee</span>
-              </div>
-              <p className="text-[11px] text-slate-600 leading-relaxed">
-                Upon submitting your request, our chief Ayurvedic reception desk verifies practitioner scheduling and prepares fresh medicated herbal formulations specifically for your session.
+              <h2 className="relative mt-5 font-display text-2xl font-semibold text-white tracking-tight">
+                Booking confirmed
+              </h2>
+              <p className="relative mt-1.5 text-sm text-white/65 max-w-sm mx-auto leading-relaxed">
+                Your session request has been registered. Our reception team is preparing your chamber and fresh medicated formulations.
               </p>
             </div>
 
-            {/* Action Button */}
-            <button
-              onClick={handleBookSession}
-              disabled={isSubmitting}
-              className="w-full py-3.5 px-4 rounded-lg font-serif font-bold text-sm bg-[#8B9D83] hover:bg-[#7a8c72] text-white cursor-pointer active:scale-[0.98] transition-all shadow-sm flex items-center justify-center space-x-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin"></span>
-                  <span>Confirming Treatment Request...</span>
-                </>
-              ) : (
-                <>
-                  <span>Request Panchakarma Treatment</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-
-            {/* Patient Feedback Alert */}
-            {rpcResponse && (
-              <div className={`p-4 rounded-xl border animate-in fade-in duration-300 ${
-                rpcResponse.success
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                  : 'bg-slate-50 border-slate-200 text-slate-800'
-              }`}>
-                <div className="flex items-start space-x-2.5">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-                  <div className="text-xs space-y-1">
-                    <p className="font-bold text-sm text-emerald-900">
-                      {rpcResponse.success ? 'Treatment Request Received!' : 'Request Under Review'}
-                    </p>
-                    <p className="text-slate-600 leading-relaxed">
-                      {rpcResponse.success
-                        ? 'Your appointment has been registered. Our reception team is preparing your room and customized formulations.'
-                        : 'Your preferred slot is being coordinated with our Vaidya team. You can check with the reception desk.'}
-                    </p>
-                    
-                    {rpcResponse.booking_ref && (
-                      <div className="pt-2 flex items-center justify-between">
-                        <span className="font-mono text-[#2D3A3A] bg-white px-2 py-0.5 rounded border border-slate-200 font-bold">
-                          Ref: {rpcResponse.booking_ref}
-                        </span>
-                        {onNavigateToDesk && (
-                          <button
-                            onClick={onNavigateToDesk}
-                            className="text-[#8B9D83] hover:text-[#2D3A3A] font-semibold underline text-[11px]"
-                          >
-                            View on Reception Desk →
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
+            <div className="px-6 sm:px-8 py-6 space-y-4">
+              <div className="flex items-center justify-between rounded-xl bg-mint border border-sage/25 px-4 py-3">
+                <span className="text-xs font-semibold text-forest">Booking reference</span>
+                <span className="font-mono text-sm font-bold text-forest-deep">
+                  {rpcResponse.booking_ref}
+                </span>
               </div>
-            )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                <SummaryRow label="Treatment" value={rpcResponse.details?.therapy_name || selectedTherapy?.name} strong />
+                <SummaryRow label="Practitioner" value={rpcResponse.details?.therapist_name || selectedTherapist?.name} />
+                <SummaryRow label="Chamber" value={rpcResponse.details?.room_name || 'Assigned at check-in'} />
+                <SummaryRow
+                  label="Schedule"
+                  value={
+                    rpcResponse.details
+                      ? `${new Date(rpcResponse.details.start_time).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} · ${new Date(rpcResponse.details.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : ''
+                  }
+                />
+                <SummaryRow label="Medicated oil" value={`${rpcResponse.details?.oil_required_ml ?? selectedTherapy?.oil_required_ml} mL ${rpcResponse.details?.oil_type ?? selectedTherapy?.oil_type ?? ''}`} />
+                <SummaryRow label="Duration" value={`${selectedTherapy?.duration_mins} minutes`} />
+              </div>
 
-          </div>
-
-        </div>
-
-      </div>
-
+              <div className="pt-4 flex flex-col sm:flex-row gap-3 justify-end border-t border-line mt-2">
+                <Button variant="secondary" onClick={resetFlow}>
+                  Book another session
+                </Button>
+                {onNavigateToDesk ? (
+                  <Button onClick={onNavigateToDesk} icon={<ArrowRight className="w-4 h-4" />}>
+                    View appointment
+                  </Button>
+                ) : (
+                  <Button onClick={resetFlow}>Back to dashboard</Button>
+                )}
+              </div>
+            </div>
+          </Card>
+        </motion.div>
+        </StepPanel>
+      )}
     </div>
   );
 };
+
+const SummaryRow: React.FC<{ label: string; value?: React.ReactNode; strong?: boolean }> = ({
+  label,
+  value,
+  strong,
+}) => (
+  <div className="flex items-baseline justify-between gap-4">
+    <span className="text-xs text-muted shrink-0">{label}</span>
+    <span
+      className={`text-right truncate text-sm ${
+        strong ? 'font-display font-semibold text-forest-deep' : 'font-medium text-charcoal'
+      }`}
+    >
+      {value || '—'}
+    </span>
+  </div>
+);
+

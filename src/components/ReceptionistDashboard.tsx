@@ -1,33 +1,52 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  CheckCircle2, 
-  XCircle, 
-  Clock, 
-  AlertTriangle, 
-  Droplets, 
-  User, 
-  Layers, 
-  Activity, 
-  Plus, 
-  FileText, 
-  Search, 
-  Check, 
-  Calendar,
-  AlertCircle,
+import { AnimatePresence, motion } from 'motion/react';
+import {
+  Clock,
+  Droplets,
+  Layers,
+  UserCheck,
+  Package,
+  User,
+  FileText,
+  Plus,
+  RotateCcw,
   Edit2,
   Trash2,
-  RotateCcw,
-  Sliders,
-  ShieldCheck,
-  Package,
-  Wrench,
-  UserCheck
+  CalendarX2,
+  CheckCircle2,
+  AlertCircle,
+  Activity,
+  Inbox,
 } from 'lucide-react';
 import { ayurEngine } from '../services/engine';
-import { Booking, InventoryItem, ResourceRoom, Therapist, RealtimeAuditLog } from '../types/ayursutra';
+import type {
+  Booking,
+  InventoryItem,
+  ResourceRoom,
+  Therapist,
+  RealtimeAuditLog,
+} from '../types/ayursutra';
 import { MedicalReportModal } from './MedicalReportModal';
+import {
+  PageHeader,
+  SectionHeader,
+  StatCard,
+  Card,
+  Button,
+  IconButton,
+  Badge,
+  StatusBadge,
+  SearchInput,
+  FilterChip,
+  EmptyState,
+  Field,
+  Input,
+  Select,
+  Textarea,
+  Modal,
+} from './ui';
 
-type DeskSubTab = 'queue' | 'inventory' | 'rooms' | 'therapists' | 'audit';
+type DeskSubTab = 'queue' | 'inventory' | 'rooms' | 'therapists';
 
 export const ReceptionistDashboard: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>(() => ayurEngine.getBookings());
@@ -36,40 +55,43 @@ export const ReceptionistDashboard: React.FC = () => {
   const [therapists, setTherapists] = useState<Therapist[]>(() => ayurEngine.getTherapists());
   const [auditLogs, setAuditLogs] = useState<RealtimeAuditLog[]>(() => ayurEngine.getAuditLogs());
 
-  // Desk Sub-Tab
   const [activeSubTab, setActiveSubTab] = useState<DeskSubTab>('queue');
 
   // Queue state
   const [statusFilter, setStatusFilter] = useState<string>('Pending');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [selectedReportBooking, setSelectedReportBooking] = useState<Booking | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
-  const [actionFeedback, setActionFeedback] = useState<{ id: string; success: boolean; message: string } | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<{
+    id: string;
+    success: boolean;
+    message: string;
+  } | null>(null);
 
-  // Rejection Dialog
+  // Rejection dialog
   const [rejectingBooking, setRejectingBooking] = useState<Booking | null>(null);
-  const [rejectReason, setRejectReason] = useState<string>('Therapist emergency reassignment');
+  const [rejectReason, setRejectReason] = useState('Therapist emergency reassignment');
 
-  // Inventory CRUD Modal State
+  // Inventory CRUD modal state
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
-  const [isAddingNewItem, setIsAddingNewItem] = useState<boolean>(false);
+  const [isAddingNewItem, setIsAddingNewItem] = useState(false);
   const [newItemForm, setNewItemForm] = useState({
     item_name: '',
     category: 'Medicated Oil',
     stock_ml: 2500,
     min_threshold_ml: 500,
     unit: 'mL',
-    batch_number: 'BATCH-2026-X',
+    batch_number: '',
     description: 'Traditional classical Ayurvedic formulation for Panchakarma procedures.',
   });
 
-  // Quick Restock Modal
+  // Quick restock modal
   const [restockModalItem, setRestockModalItem] = useState<InventoryItem | null>(null);
-  const [restockAmount, setRestockAmount] = useState<number>(1000);
+  const [restockAmount, setRestockAmount] = useState(1000);
 
-  // Room Edit Modal
+  // Room edit modal
   const [editingRoom, setEditingRoom] = useState<ResourceRoom | null>(null);
-  const [isAddingRoom, setIsAddingRoom] = useState<boolean>(false);
+  const [isAddingRoom, setIsAddingRoom] = useState(false);
   const [newRoomForm, setNewRoomForm] = useState({
     room_name: '',
     room_code: '',
@@ -79,7 +101,7 @@ export const ReceptionistDashboard: React.FC = () => {
     maintenance_status: 'Operational' as ResourceRoom['maintenance_status'],
   });
 
-  // Therapist Edit Modal
+  // Therapist edit modal
   const [editingTherapist, setEditingTherapist] = useState<Therapist | null>(null);
 
   useEffect(() => {
@@ -92,44 +114,41 @@ export const ReceptionistDashboard: React.FC = () => {
     });
   }, []);
 
-  // Filter bookings
+  // Filter bookings (preserved)
   const filteredBookings = bookings.filter((b) => {
     const matchesStatus = statusFilter === 'ALL' || b.status === statusFilter;
-    const matchesSearch = 
-      b.client_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.booking_ref.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (b.therapy?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase();
+    const matchesSearch =
+      b.client_name.toLowerCase().includes(q) ||
+      b.booking_ref.toLowerCase().includes(q) ||
+      (b.therapy?.name || '').toLowerCase().includes(q);
     return matchesStatus && matchesSearch;
   });
 
   const pendingBookings = bookings.filter((b) => b.status === 'Pending');
+  const confirmedToday = bookings.filter((b) => b.status === 'Confirmed');
+  const lowStockItems = inventory.filter((i) => i.stock_ml <= i.min_threshold_ml);
 
-  // Handle Approve RPC
+  // Handle Approve RPC (preserved)
   const handleApprove = async (bookingId: string) => {
     setApprovingId(bookingId);
     setActionFeedback(null);
-
     const result = await ayurEngine.approveBookingRPC(bookingId);
     setApprovingId(null);
-    setActionFeedback({
-      id: bookingId,
-      success: result.success,
-      message: result.message,
-    });
-
+    setActionFeedback({ id: bookingId, success: result.success, message: result.message });
     setTimeout(() => {
       setActionFeedback((prev) => (prev?.id === bookingId ? null : prev));
     }, 4000);
   };
 
-  // Handle Reject RPC
+  // Handle Reject RPC (preserved)
   const handleRejectConfirm = async () => {
     if (!rejectingBooking) return;
     await ayurEngine.rejectBookingRPC(rejectingBooking.id, rejectReason);
     setRejectingBooking(null);
   };
 
-  // Handle Save Inventory Item Edit
+  // Inventory CRUD (preserved)
   const handleSaveInventoryEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingItem) return;
@@ -144,7 +163,6 @@ export const ReceptionistDashboard: React.FC = () => {
     setEditingItem(null);
   };
 
-  // Handle Add New Inventory Item
   const handleAddNewItemSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemForm.item_name.trim()) return;
@@ -165,19 +183,22 @@ export const ReceptionistDashboard: React.FC = () => {
       stock_ml: 2500,
       min_threshold_ml: 500,
       unit: 'mL',
-      batch_number: 'BATCH-2026-X',
+      batch_number: '',
       description: 'Traditional classical Ayurvedic formulation for Panchakarma procedures.',
     });
   };
 
-  // Handle Delete Inventory Item
   const handleDeleteInventoryItem = (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to remove "${name}" from the active resource inventory?`)) {
+    if (
+      window.confirm(
+        `Remove "${name}" from the active resource inventory? This cannot be undone.`
+      )
+    ) {
       ayurEngine.deleteInventoryItem(id);
     }
   };
 
-  // Handle Save Room Edit
+  // Rooms & therapists (preserved)
   const handleSaveRoomEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingRoom) return;
@@ -190,7 +211,6 @@ export const ReceptionistDashboard: React.FC = () => {
     setEditingRoom(null);
   };
 
-  // Handle Add Room Submit
   const handleAddRoomSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRoomForm.room_name.trim()) return;
@@ -207,7 +227,6 @@ export const ReceptionistDashboard: React.FC = () => {
     setIsAddingRoom(false);
   };
 
-  // Handle Save Therapist Edit
   const handleSaveTherapistEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTherapist) return;
@@ -220,1172 +239,718 @@ export const ReceptionistDashboard: React.FC = () => {
     setEditingTherapist(null);
   };
 
-  // Handle Revert to Defaults
   const handleRevertDefaults = () => {
-    if (window.confirm('Revert all resource inventory, rooms, therapists, and appointments to initial authentic seed data?')) {
+    if (
+      window.confirm(
+        'Revert all inventory, rooms, therapists and appointments to initial seed data?'
+      )
+    ) {
       ayurEngine.resetToDefaults();
     }
   };
 
+  const today = new Date();
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-      
-      {/* Top Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
-        {/* Metric 1: Pending Approvals */}
-        <div 
+    <div className="space-y-6 lg:space-y-8">
+      {/* Page header */}
+      <PageHeader
+        eyebrow={today.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}
+        title="Clinic operations"
+        description="Coordinate bookings, chambers, practitioners and medicated inventory from one command center."
+        actions={
+          <Button variant="secondary" size="sm" onClick={handleRevertDefaults} icon={<RotateCcw className="w-3.5 h-3.5" />}>
+            Reset seed data
+          </Button>
+        }
+      />
+
+      {/* KPI row — real data */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <StatCard
+          icon={<Clock />}
+          label="Pending requests"
+          value={pendingBookings.length}
+          subtitle="Awaiting constraint verification"
+          tone="warning"
+          active={activeSubTab === 'queue'}
           onClick={() => setActiveSubTab('queue')}
-          className={`p-5 rounded-xl border shadow-sm flex items-center justify-between cursor-pointer transition-all ${
-            activeSubTab === 'queue' ? 'bg-white border-[#8B9D83] ring-1 ring-[#8B9D83]' : 'bg-white border-slate-200 hover:border-slate-300'
-          }`}
-        >
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Pending Approvals</p>
-            <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">{pendingBookings.length} Requests</h3>
-            <p className="text-xs text-orange-600 font-medium mt-0.5">Constraint check ready</p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-200 flex items-center justify-center text-orange-600">
-            <Clock className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Metric 2: Inventory Health / Formulations */}
-        <div 
+        />
+        <StatCard
+          icon={<CalendarX2 />}
+          label="Confirmed"
+          value={confirmedToday.length}
+          subtitle="Scheduled & resource-locked"
+          tone="info"
+          active={activeSubTab === 'queue'}
+          onClick={() => setActiveSubTab('queue')}
+        />
+        <StatCard
+          icon={<Droplets />}
+          label="Formulations"
+          value={`${inventory.length}`}
+          subtitle={`${(inventory.reduce((a, i) => a + i.stock_ml, 0) / 1000).toFixed(1)} L in stock`}
+          tone="brand"
+          active={activeSubTab === 'inventory'}
           onClick={() => setActiveSubTab('inventory')}
-          className={`p-5 rounded-xl border shadow-sm flex items-center justify-between cursor-pointer transition-all ${
-            activeSubTab === 'inventory' ? 'bg-white border-[#8B9D83] ring-1 ring-[#8B9D83]' : 'bg-white border-slate-200 hover:border-slate-300'
-          }`}
-        >
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Resource Inventory</p>
-            <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">
-              {inventory.length} Formulations
-            </h3>
-            <p className="text-xs text-[#8B9D83] font-medium mt-0.5">
-              {(inventory.reduce((acc, i) => acc + i.stock_ml, 0) / 1000).toFixed(1)} Liters In Stock
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-[#8B9D83]/15 border border-[#8B9D83]/30 flex items-center justify-center text-[#2D3A3A]">
-            <Droplets className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Metric 3: Operational Droni Suites */}
-        <div 
+        />
+        <StatCard
+          icon={<Layers />}
+          label="Chambers ready"
+          value={`${rooms.filter((r) => r.is_operational).length}/${rooms.length}`}
+          subtitle={`${therapists.filter((t) => t.status === 'Available').length} practitioners on duty`}
+          tone={lowStockItems.length > 0 ? 'gold' : 'brand'}
+          active={activeSubTab === 'rooms'}
           onClick={() => setActiveSubTab('rooms')}
-          className={`p-5 rounded-xl border shadow-sm flex items-center justify-between cursor-pointer transition-all ${
-            activeSubTab === 'rooms' ? 'bg-white border-[#8B9D83] ring-1 ring-[#8B9D83]' : 'bg-white border-slate-200 hover:border-slate-300'
-          }`}
-        >
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Droni Bed Chambers</p>
-            <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">
-              {rooms.filter((r) => r.is_operational).length} / {rooms.length} Suites
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">Teak, Rosewood & Anjili</p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-[#8B9D83]/15 border border-[#8B9D83]/30 flex items-center justify-center text-[#2D3A3A]">
-            <Layers className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Metric 4: Certified Practitioners */}
-        <div 
-          onClick={() => setActiveSubTab('therapists')}
-          className={`p-5 rounded-xl border shadow-sm flex items-center justify-between cursor-pointer transition-all ${
-            activeSubTab === 'therapists' ? 'bg-white border-[#8B9D83] ring-1 ring-[#8B9D83]' : 'bg-white border-slate-200 hover:border-slate-300'
-          }`}
-        >
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Vaidyas & Staff</p>
-            <h3 className="text-2xl font-serif font-bold text-slate-900 mt-1">
-              {therapists.filter((t) => t.status === 'Available').length} / {therapists.length} Active
-            </h3>
-            <p className="text-xs text-emerald-600 font-medium mt-0.5">On-Duty Schedule</p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
-            <UserCheck className="w-5 h-5" />
-          </div>
-        </div>
-
+        />
       </div>
 
-      {/* Sub-Navigation Bar for Receptionist Hub */}
-      <div className="bg-white border border-slate-200 rounded-xl p-2 shadow-sm flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center space-x-1">
+      {/* Sub navigation */}
+      <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5" role="tablist" aria-label="Operations sections">
+        {([
+          ['queue', 'Booking queue', <Clock key="i" className="w-3.5 h-3.5" />, pendingBookings.length],
+          ['inventory', 'Inventory', <Package key="i" className="w-3.5 h-3.5" />, lowStockItems.length],
+          ['rooms', 'Chambers', <Layers key="i" className="w-3.5 h-3.5" />],
+          ['therapists', 'Practitioners', <UserCheck key="i" className="w-3.5 h-3.5" />],
+        ] as const).map(([id, label, icon, count]) => (
           <button
-            onClick={() => setActiveSubTab('queue')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
-              activeSubTab === 'queue'
-                ? 'bg-[#2D3A3A] text-white font-semibold shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100'
+            key={id}
+            role="tab"
+            aria-selected={activeSubTab === id}
+            onClick={() => setActiveSubTab(id as DeskSubTab)}
+            className={`inline-flex items-center gap-2 h-10 px-4 rounded-xl text-xs font-semibold whitespace-nowrap cursor-pointer border transition-colors ${
+              activeSubTab === id
+                ? 'bg-forest-deep text-white border-forest-deep shadow-sm'
+                : 'bg-white/70 text-muted border-line hover:text-forest-deep hover:border-sage/40'
             }`}
           >
-            <Clock className="w-3.5 h-3.5" />
-            <span>Booking Queue ({pendingBookings.length})</span>
+            {icon}
+            {label}
+            {count !== undefined && count > 0 && (
+              <span
+                className={`min-w-5 px-1.5 py-px rounded-full text-[10px] font-bold ${
+                  activeSubTab === id ? 'bg-white/20' : 'bg-sage-soft text-forest'
+                }`}
+              >
+                {count}
+              </span>
+            )}
           </button>
-
-          <button
-            onClick={() => setActiveSubTab('inventory')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
-              activeSubTab === 'inventory'
-                ? 'bg-[#2D3A3A] text-white font-semibold shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span>Resource Inventory Management</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('rooms')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
-              activeSubTab === 'rooms'
-                ? 'bg-[#2D3A3A] text-white font-semibold shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Droni Treatment Rooms</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('therapists')}
-            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all ${
-              activeSubTab === 'therapists'
-                ? 'bg-[#2D3A3A] text-white font-semibold shadow-sm'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            <User className="w-3.5 h-3.5" />
-            <span>Vaidyas & Practitioners</span>
-          </button>
-        </div>
-
-        <div className="flex items-center space-x-2 pr-1">
-          <button
-            onClick={handleRevertDefaults}
-            title="Revert all inventory, room, and booking changes back to initial state"
-            className="flex items-center space-x-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-[#8B9D83]" />
-            <span>Revert to Seeds</span>
-          </button>
-        </div>
+        ))}
       </div>
 
-      {/* VIEW 1: BOOKING APPROVAL QUEUE */}
-      {activeSubTab === 'queue' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Left Column: Real-Time Bookings Queue (8 cols) */}
-          <div className="lg:col-span-8 space-y-6">
-            
-            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-5">
-              
-              {/* Header & Controls */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                    <h2 className="text-lg font-serif font-bold text-slate-900">
-                      Pending Approvals (Receptionist Verification Desk)
-                    </h2>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeSubTab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
+        >
+          {/* ==================== QUEUE ==================== */}
+          {activeSubTab === 'queue' && (
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+              <div className="xl:col-span-8 space-y-6">
+                <Card className="p-5 sm:p-6 space-y-5">
+                  <SectionHeader
+                    icon={<Inbox />}
+                    title="Booking approval queue"
+                    description="Three-way constraint check on every request: practitioner slot, chamber availability and oil stock."
+                  />
+
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <SearchInput
+                      containerClassName="flex-1"
+                      placeholder="Search patient, reference (AYUR-…) or therapy…"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      aria-label="Search bookings"
+                    />
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {['Pending', 'Confirmed', 'ALL'].map((st) => (
+                        <FilterChip key={st} active={statusFilter === st} onClick={() => setStatusFilter(st)} count={st === 'Pending' ? pendingBookings.length : undefined}>
+                          {st === 'ALL' ? 'All' : st}
+                        </FilterChip>
+                      ))}
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Multi-variable constraint checks: Practitioner slot, Droni suite, and Medicated oil stock
-                  </p>
-                </div>
 
-                {/* Status Tabs */}
-                <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-lg">
-                  {['Pending', 'Confirmed', 'ALL'].map((st) => (
-                    <button
-                      key={st}
-                      onClick={() => setStatusFilter(st)}
-                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                        statusFilter === st
-                          ? 'bg-[#2D3A3A] text-white font-semibold shadow-sm'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      {st === 'Pending' ? `Pending (${pendingBookings.length})` : st}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                  {filteredBookings.length === 0 ? (
+                    <EmptyState
+                      icon={<Inbox />}
+                      title="No bookings in this view"
+                      description="New patient requests will appear here automatically in real time."
+                    />
+                  ) : (
+                    <ul className="space-y-3">
+                      {filteredBookings.map((b) => {
+                        const therapy = b.therapy;
+                        const therapist = b.therapist;
+                        const room = b.room;
+                        const invItem = inventory.find((i) => i.item_name === therapy?.oil_type);
+                        const hasOil = invItem ? invItem.stock_ml >= (therapy?.oil_required_ml || 0) : false;
+                        const isPending = b.status === 'Pending';
+                        const isApproving = approvingId === b.id;
 
-              {/* Search Bar */}
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                <input
-                  type="text"
-                  placeholder="Search patient name, booking ref (e.g. AYUR-2026), or therapy..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-10 pr-4 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                />
-              </div>
+                        return (
+                          <li
+                            key={b.id}
+                            className={`rounded-2xl border p-4 transition-colors ${
+                              isPending && !hasOil
+                                ? 'border-danger/25 bg-red-50/50'
+                                : b.status === 'Pending'
+                                  ? 'surface hover:border-sage/40'
+                                  : 'surface opacity-80'
+                            }`}
+                          >
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-display text-sm font-semibold text-charcoal">{b.client_name}</span>
+                                  <Badge>{b.booking_ref}</Badge>
+                                </div>
+                                <p className="mt-1 text-xs text-muted truncate">
+                                  {therapy?.name ?? 'Panchakarma'} · {therapy?.duration_mins ?? 60} min ·{' '}
+                                  {new Date(b.start_time).toLocaleDateString([], { month: 'short', day: 'numeric' })} at{' '}
+                                  <strong className="text-charcoal font-semibold">
+                                    {new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </strong>
+                                </p>
+                              </div>
 
-              {/* Bookings List */}
-              <div className="space-y-3">
-                {filteredBookings.length === 0 ? (
-                  <div className="p-8 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200">
-                    <Calendar className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                    <p className="text-sm font-semibold text-slate-700">No bookings in this filter</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      New requests submitted by clients will appear here automatically.
-                    </p>
-                  </div>
-                ) : (
-                  filteredBookings.map((b) => {
-                    const therapy = b.therapy;
-                    const therapist = b.therapist;
-                    const room = b.room;
-                    const invItem = inventory.find((i) => i.item_name === therapy?.oil_type);
-                    const hasSufficientOil = invItem ? invItem.stock_ml >= (therapy?.oil_required_ml || 0) : false;
-                    const isPending = b.status === 'Pending';
-                    const isApproving = approvingId === b.id;
+                              {/* Constraint indicators */}
+                              <ConstraintPill ok label={therapist?.name.split(' ')[0] || 'Vaidya'} caption="Therapist" />
+                              <ConstraintPill ok={!!room?.is_operational} label={room?.room_name.split(' ')[0] || 'Chamber'} caption="Room" />
+                              <ConstraintPill ok={hasOil} label={hasOil ? `${therapy?.oil_required_ml} mL` : 'Short'} caption="Stock" />
 
-                    return (
-                      <div
-                        key={b.id}
-                        className={`p-4 rounded-xl border transition-all ${
-                          isPending
-                            ? hasSufficientOil
-                              ? 'bg-slate-50/80 border-slate-200 hover:border-slate-300'
-                              : 'bg-red-50/60 border-red-200'
-                            : b.status === 'Confirmed'
-                            ? 'bg-white border-slate-200'
-                            : 'bg-slate-50/40 border-slate-200 opacity-70'
-                        }`}
-                      >
-                        {/* Top Row */}
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                          
-                          {/* Patient info */}
-                          <div className="flex flex-col">
-                            <div className="flex items-center space-x-2">
-                              <span className="font-semibold text-slate-900 text-sm">{b.client_name}</span>
-                              <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-white text-slate-600 border border-slate-200">
-                                {b.booking_ref}
-                              </span>
-                            </div>
-                            <span className="text-xs text-slate-500 mt-0.5">
-                              Therapy: <strong className="text-slate-700">{therapy?.name || 'Panchakarma'}</strong> ({therapy?.duration_mins || 60}m)
-                            </span>
-                          </div>
-
-                          {/* 3-Constraint Breakdown (Receptionist Desk Only) */}
-                          <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs">
-                            <div className="flex flex-col items-center">
-                              <span className="text-emerald-600 font-bold text-[11px]">✓ Therapist</span>
-                              <span className="text-slate-500 text-[11px]">{therapist?.name.split(' ')[0] || 'Vaidya'}</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <IconButton label="View medical dossier" onClick={() => setSelectedReportBooking(b)}>
+                                  <FileText className="w-4 h-4" />
+                                </IconButton>
+                                {isPending ? (
+                                  <>
+                                    <Button variant="ghost" size="sm" onClick={() => setRejectingBooking(b)}>
+                                      Reject
+                                    </Button>
+                                    <Button size="sm" loading={isApproving} disabled={!hasOil && !isApproving} onClick={() => handleApprove(b.id)}>
+                                      Approve
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <StatusBadge status={b.status} />
+                                )}
+                              </div>
                             </div>
 
-                            <div className="flex flex-col items-center">
-                              <span className={`${room?.is_operational ? 'text-emerald-600' : 'text-red-600'} font-bold text-[11px]`}>
-                                {room?.is_operational ? '✓ Room' : '✗ Room'}
-                              </span>
-                              <span className="text-slate-500 text-[11px]">{room?.room_name.split(' ')[0] || 'Droni'}</span>
-                            </div>
-
-                            <div className="flex flex-col items-center">
-                              <span className={`${hasSufficientOil ? 'text-emerald-600' : 'text-red-600'} font-bold text-[11px]`}>
-                                {hasSufficientOil ? '✓ Stock' : '✗ Shortage'}
-                              </span>
-                              <span className="text-slate-500 text-[11px]">{therapy?.oil_required_ml}ml ({invItem?.stock_ml || 0}ml left)</span>
-                            </div>
-                          </div>
-
-                          {/* Right Buttons */}
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => setSelectedReportBooking(b)}
-                              className="p-2 rounded-lg bg-white hover:bg-slate-100 text-slate-600 border border-slate-200 transition-colors"
-                              title="Inspect Client Medical Dossier"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                            </button>
-
-                            {isPending ? (
-                              <>
-                                <button
-                                  onClick={() => setRejectingBooking(b)}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 border border-slate-200 transition-colors"
-                                >
-                                  Reject
-                                </button>
-
-                                <button
-                                  onClick={() => handleApprove(b.id)}
-                                  disabled={isApproving || !hasSufficientOil}
-                                  className={`px-4 py-2 rounded-lg text-xs font-semibold shadow-sm flex items-center space-x-1.5 transition-all ${
-                                    hasSufficientOil
-                                      ? 'bg-[#2D3A3A] hover:bg-[#1E2525] text-white cursor-pointer active:scale-95'
-                                      : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                            <AnimatePresence>
+                              {actionFeedback && actionFeedback.id === b.id && (
+                                <motion.p
+                                  initial={{ opacity: 0, height: 0 }}
+                                  animate={{ opacity: 1, height: 'auto' }}
+                                  exit={{ opacity: 0, height: 0 }}
+                                  className={`mt-3 pt-3 border-t border-line/60 text-xs font-medium flex items-center gap-1.5 ${
+                                    actionFeedback.success ? 'text-success' : 'text-danger'
                                   }`}
                                 >
-                                  {isApproving ? (
-                                    <>
-                                      <span className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin"></span>
-                                      <span>Approving...</span>
-                                    </>
+                                  {actionFeedback.success ? (
+                                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                                   ) : (
-                                    <span>Approve & Deduct</span>
+                                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                                   )}
-                                </button>
-                              </>
-                            ) : (
-                              <span className="text-xs font-semibold px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                ✓ Confirmed
-                              </span>
-                            )}
-                          </div>
-
-                        </div>
-
-                        {/* Detail Footer */}
-                        <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex flex-wrap items-center justify-between text-[11px] text-slate-500 gap-2">
-                          <span>
-                            Time: <strong className="text-slate-700">{new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong> on {new Date(b.start_time).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                          </span>
-                          <span>
-                            Prakriti: <strong className="text-slate-700">{b.prakriti || 'Vata-Pitta'}</strong> • {b.medical_notes ? `"${b.medical_notes.substring(0, 45)}..."` : 'Standard intake'}
-                          </span>
-                        </div>
-
-                        {/* Inline Action Feedback */}
-                        {actionFeedback && actionFeedback.id === b.id && (
-                          <div className={`mt-2 p-2.5 rounded-lg border text-xs flex items-center space-x-2 ${
-                            actionFeedback.success
-                              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                              : 'bg-red-50 border-red-200 text-red-800'
-                          }`}>
-                            {actionFeedback.success ? (
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                            ) : (
-                              <AlertCircle className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
-                            )}
-                            <span>{actionFeedback.message}</span>
-                          </div>
-                        )}
-
-                      </div>
-                    );
-                  })
-                )}
+                                  {actionFeedback.message}
+                                </motion.p>
+                              )}
+                            </AnimatePresence>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </Card>
               </div>
 
-            </div>
-
-            {/* Real-time PostgreSQL Audit Trail Stream */}
-            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center space-x-2">
-                  <Activity className="w-4 h-4 text-[#8B9D83]" />
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-                    Live Operational Audit Trail
-                  </h3>
-                </div>
-                <span className="text-[10px] font-mono text-emerald-600 font-semibold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  Replication Active
-                </span>
-              </div>
-
-              <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-                {auditLogs.slice(0, 6).map((log) => (
-                  <div
-                    key={log.id}
-                    className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-start justify-between text-xs"
-                  >
-                    <div className="space-y-0.5">
-                      <p className="font-semibold text-slate-800 flex items-center gap-1.5">
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          log.severity === 'success' ? 'bg-emerald-500' :
-                          log.severity === 'warning' ? 'bg-orange-500' :
-                          log.severity === 'error' ? 'bg-red-500' : 'bg-slate-400'
-                        }`}></span>
-                        {log.title}
-                      </p>
-                      <p className="text-[11px] text-slate-500">{log.details}</p>
-                    </div>
-                    <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap ml-2">
-                      {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-          </div>
-
-          {/* Right Column: Inventory Summary & Quick Status (4 cols) */}
-          <div className="lg:col-span-4 space-y-6">
-            
-            {/* Section: Inventory Health */}
-            <section className="bg-[#2D3A3A] text-white rounded-xl p-6 shadow-md space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-[#8B9D83]">
-                  Inventory Health
-                </h3>
-                <button
-                  onClick={() => setActiveSubTab('inventory')}
-                  className="text-[10px] text-slate-300 hover:text-white underline"
-                >
-                  Manage All →
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                {inventory.slice(0, 4).map((item) => {
-                  const percentage = Math.min(100, Math.round((item.stock_ml / 5000) * 100));
-                  const isLow = item.stock_ml <= item.min_threshold_ml;
-
-                  return (
-                    <div key={item.id} className="space-y-1">
-                      <div className="flex justify-between text-xs">
-                        <span className="font-medium text-slate-200 truncate pr-2" title={item.item_name}>
-                          {item.item_name.split('(')[0]}
-                        </span>
-                        <span className="text-slate-300 font-mono">
-                          {item.stock_ml}ml / 5,000ml
-                        </span>
-                      </div>
-
-                      <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full transition-all duration-500 ${
-                            isLow ? 'bg-orange-400' : 'bg-[#8B9D83]'
-                          }`}
-                          style={{ width: `${percentage}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                <div className="pt-4 border-t border-white/10">
-                  <div className="p-3 bg-white/5 rounded-lg flex items-center justify-between">
-                    <span className="text-[10px] uppercase tracking-tighter opacity-60">
-                      Quick Restock
-                    </span>
-                    <button
-                      onClick={() => {
-                        setRestockModalItem(inventory[0]);
-                        setRestockAmount(1000);
-                      }}
-                      className="text-[10px] px-2.5 py-1 bg-orange-500/20 text-orange-400 rounded-full border border-orange-500/30 hover:bg-orange-500/30 transition-colors font-medium flex items-center gap-1"
-                    >
-                      <Plus className="w-3 h-3" />
-                      + Add Stock
+              {/* Right rail */}
+              <div className="xl:col-span-4 space-y-6">
+                <Card className="p-5 space-y-4 bg-forest-deep border-transparent">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[11px] font-bold uppercase tracking-widest text-sage">Inventory health</h3>
+                    <button onClick={() => setActiveSubTab('inventory')} className="text-[11px] text-sage underline underline-offset-2 hover:text-white cursor-pointer">
+                      Manage all
                     </button>
                   </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Section: Quick Resource Status */}
-            <section className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">
-                  Quick Room Status
-                </h3>
-                <button
-                  onClick={() => setActiveSubTab('rooms')}
-                  className="text-[11px] text-slate-500 hover:text-slate-900 underline"
-                >
-                  Edit Rooms
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {rooms.map((room) => {
-                  const isFree = room.is_operational;
-
-                  return (
-                    <div key={room.id} className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2.5">
-                        <div className={`w-2 h-2 rounded-full ${isFree ? 'bg-emerald-500' : 'bg-orange-500'}`}></div>
-                        <span className="font-medium text-slate-700">{room.room_name}</span>
-                      </div>
-                      <span className="text-[11px] text-slate-400">
-                        {room.droni_wood.split(' ')[0]} • {isFree ? 'Free' : room.maintenance_status}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-
-          </div>
-
-        </div>
-      )}
-
-      {/* VIEW 2: FULL RESOURCE INVENTORY MANAGEMENT (CRUD) */}
-      {activeSubTab === 'inventory' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 shadow-sm space-y-6">
-          
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
-            <div>
-              <div className="flex items-center space-x-2">
-                <Package className="w-5 h-5 text-[#8B9D83]" />
-                <h2 className="text-xl font-serif font-bold text-slate-900">
-                  Resource Inventory Management (Oils & Formulations)
-                </h2>
-              </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Receptionists can edit stock levels, adjust safety thresholds, add new Ayurvedic oils, and monitor batch details in real time.
-              </p>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setIsAddingNewItem(true)}
-                className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#2D3A3A] hover:bg-[#1E2525] text-white flex items-center space-x-1.5 shadow-sm transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Add New Formulation</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Inventory Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-y border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
-                  <th className="py-3 px-4">Item Name / Formulation</th>
-                  <th className="py-3 px-4">Category</th>
-                  <th className="py-3 px-4">Current Stock</th>
-                  <th className="py-3 px-4">Min. Threshold</th>
-                  <th className="py-3 px-4">Batch Number</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {inventory.map((item) => {
-                  const isLow = item.stock_ml <= item.min_threshold_ml;
-
-                  return (
-                    <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3.5 px-4 font-semibold text-slate-900">
-                        {item.item_name}
-                      </td>
-                      <td className="py-3.5 px-4 text-slate-500">
-                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-medium">
-                          {item.category}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-800 text-sm">
-                        {item.stock_ml} <span className="text-xs font-normal text-slate-500">{item.unit}</span>
-                      </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-500">
-                        {item.min_threshold_ml} {item.unit}
-                      </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-600">
-                        {item.batch_number || 'N/A'}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        {isLow ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800 border border-orange-200">
-                            Low Stock
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            Sufficient
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end space-x-1.5">
-                          <button
-                            onClick={() => {
-                              setRestockModalItem(item);
-                              setRestockAmount(1000);
-                            }}
-                            className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-medium"
-                            title="Quick Restock"
-                          >
-                            + Restock
-                          </button>
-                          <button
-                            onClick={() => setEditingItem(item)}
-                            className="p-1.5 rounded bg-slate-100 hover:bg-[#8B9D83]/20 hover:text-[#2D3A3A] text-slate-600 transition-colors"
-                            title="Edit Formulation"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteInventoryItem(item.id, item.item_name)}
-                            className="p-1.5 rounded bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-400 transition-colors"
-                            title="Delete Item"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                  <div className="space-y-3.5">
+                    {inventory.slice(0, 4).map((item) => {
+                      const pct = Math.min(100, Math.round((item.stock_ml / 5000) * 100));
+                      const low = item.stock_ml <= item.min_threshold_ml;
+                      return (
+                        <div key={item.id}>
+                          <div className="flex justify-between text-[11px] mb-1.5">
+                            <span className="text-white/85 font-medium truncate pr-2">{item.item_name.split('(')[0]}</span>
+                            <span className="font-mono text-white/55">{item.stock_ml} mL</span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                            <motion.div
+                              initial={{ width: 0 }}
+                              animate={{ width: `${pct}%` }}
+                              transition={{ duration: 0.5, ease: 'easeOut' }}
+                              className={`h-full rounded-full ${low ? 'bg-warning' : 'bg-sage'}`}
+                            />
+                          </div>
                         </div>
-                      </td>
+                      );
+                    })}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="bg-white/10 text-white border-white/15 hover:bg-white/15 w-full justify-start"
+                    onClick={() => {
+                      setRestockModalItem(inventory[0]);
+                      setRestockAmount(1000);
+                    }}
+                    icon={<Plus className="w-3.5 h-3.5 text-gold" />}
+                  >
+                    Quick restock
+                  </Button>
+                </Card>
+
+                <Card className="p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="inline-flex items-center gap-2 text-sm font-display font-semibold text-forest-deep">
+                      <Activity className="w-4 h-4 text-forest" /> Live audit trail
+                    </h3>
+                    <span className="text-[10px] font-semibold text-success inline-flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /> Replication
+                    </span>
+                  </div>
+                  <ul className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                    {auditLogs.slice(0, 6).map((log) => (
+                      <li key={log.id} className="rounded-xl bg-ivory border border-line px-3 py-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-semibold text-charcoal inline-flex items-start gap-1.5">
+                            <span
+                              aria-hidden
+                              className={`mt-1 w-1.5 h-1.5 shrink-0 rounded-full ${
+                                log.severity === 'success' ? 'bg-success' :
+                                log.severity === 'warning' ? 'bg-warning' :
+                                log.severity === 'error' ? 'bg-danger' : 'bg-muted'
+                              }`}
+                            />
+                            {log.title}
+                          </p>
+                          <time className="text-[10px] font-mono text-muted whitespace-nowrap">
+                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </time>
+                        </div>
+                        <p className="mt-1 pl-3 text-[11px] text-muted leading-relaxed">{log.details}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          {/* ==================== INVENTORY ==================== */}
+          {activeSubTab === 'inventory' && (
+            <Card className="p-5 sm:p-6 space-y-5">
+              <SectionHeader
+                icon={<Package />}
+                title="Resource inventory"
+                description="Medicated oils, decoctions and formulations with real-time stock thresholds."
+                actions={
+                  <Button size="sm" onClick={() => setIsAddingNewItem(true)} icon={<Plus className="w-4 h-4" />}>
+                    Add formulation
+                  </Button>
+                }
+              />
+              <div className="-mx-5 sm:mx-0 overflow-x-auto">
+                <table className="w-full text-left text-sm min-w-[720px]">
+                  <thead>
+                    <tr className="text-[11px] font-bold uppercase tracking-widest text-muted border-b border-line">
+                      <th scope="col" className="py-3 pl-5 sm:pl-2 pr-3 font-bold">Formulation</th>
+                      <th scope="col" className="px-3 py-3 font-bold">Category</th>
+                      <th scope="col" className="px-3 py-3 font-bold">Stock</th>
+                      <th scope="col" className="px-3 py-3 font-bold">Threshold</th>
+                      <th scope="col" className="px-3 py-3 font-bold">Status</th>
+                      <th scope="col" className="px-3 py-3 pr-5 sm:pr-2 font-bold text-right">Actions</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-        </div>
-      )}
-
-      {/* VIEW 3: DRONI TREATMENT ROOMS MANAGEMENT */}
-      {activeSubTab === 'rooms' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
-            <div>
-              <div className="flex items-center space-x-2">
-                <Layers className="w-5 h-5 text-[#8B9D83]" />
-                <h2 className="text-xl font-serif font-bold text-slate-900">
-                  Droni Treatment Rooms & Chamber Management
-                </h2>
+                  </thead>
+                  <tbody className="divide-y divide-line/70">
+                    {inventory.map((item) => {
+                      const low = item.stock_ml <= item.min_threshold_ml;
+                      return (
+                        <tr key={item.id} className="hover:bg-mint/40 transition-colors">
+                          <td className="py-3.5 pl-5 sm:pl-2 pr-3 font-semibold text-charcoal">{item.item_name}</td>
+                          <td className="px-3 py-3.5"><Badge>{item.category}</Badge></td>
+                          <td className="px-3 py-3.5 font-mono font-semibold text-charcoal whitespace-nowrap">
+                            {item.stock_ml} <span className="text-xs font-normal text-muted">{item.unit}</span>
+                          </td>
+                          <td className="px-3 py-3.5 font-mono text-muted whitespace-nowrap">
+                            {item.min_threshold_ml} {item.unit}
+                          </td>
+                          <td className="px-3 py-3.5">
+                            {low ? <Badge tone="warning">Low stock</Badge> : <Badge tone="success">Sufficient</Badge>}
+                          </td>
+                          <td className="px-3 py-3.5 pr-5 sm:pr-2">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setRestockModalItem(item);
+                                  setRestockAmount(1000);
+                                }}
+                              >
+                                Restock
+                              </Button>
+                              <IconButton label={`Edit ${item.item_name}`} onClick={() => setEditingItem(item)}>
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </IconButton>
+                              <IconButton
+                                label={`Delete ${item.item_name}`}
+                                className="hover:!text-danger hover:!bg-red-50"
+                                onClick={() => handleDeleteInventoryItem(item.id, item.item_name)}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </IconButton>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Configure traditional carved wooden Droni beds, room maintenance schedules, and operational availability.
-              </p>
+            </Card>
+          )}
+
+          {/* ==================== ROOMS ==================== */}
+          {activeSubTab === 'rooms' && (
+            <Card className="p-5 sm:p-6 space-y-5">
+              <SectionHeader
+                icon={<Layers />}
+                title="Droni treatment chambers"
+                description="Traditional carved wooden Droni suites, maintenance cycles and availability."
+                actions={
+                  <Button size="sm" onClick={() => setIsAddingRoom(true)} icon={<Plus className="w-4 h-4" />}>
+                    Add chamber
+                  </Button>
+                }
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {rooms.map((r) => (
+                  <motion.div key={r.id} whileHover={{ y: -2 }} className="surface surface-hover rounded-2xl p-5 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <Badge>{r.room_code}</Badge>
+                        <h3 className="mt-2 font-display text-sm font-semibold text-charcoal">{r.room_name}</h3>
+                      </div>
+                      <StatusBadge status={r.is_operational ? 'Operational' : r.maintenance_status} />
+                    </div>
+                    <dl className="text-xs space-y-1 text-muted">
+                      <div className="flex gap-2"><dt className="font-semibold text-charcoal shrink-0">Droni:</dt><dd className="truncate">{r.droni_wood}</dd></div>
+                      <div className="flex gap-2"><dt className="font-semibold text-charcoal shrink-0">Type:</dt><dd className="truncate">{r.room_type}</dd></div>
+                    </dl>
+                    <div className="pt-3 border-t border-line/70 flex justify-end">
+                      <Button variant="secondary" size="sm" onClick={() => setEditingRoom(r)} icon={<Edit2 className="w-3 h-3" />}>
+                        Edit chamber
+                      </Button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* ==================== PRACTITIONERS ==================== */}
+          {activeSubTab === 'therapists' && (
+            <Card className="p-5 sm:p-6 space-y-5">
+              <SectionHeader
+                icon={<UserCheck />}
+                title="Vaidyas & practitioners"
+                description="On-duty status, specializations and practitioner allocations."
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {therapists.map((th) => (
+                  <motion.div key={th.id} whileHover={{ y: -2 }} className="surface surface-hover rounded-2xl p-5 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <img src={th.avatar_url} alt="" loading="lazy" className="w-11 h-11 rounded-full object-cover bg-sage-soft ring-2 ring-white" />
+                      <div className="min-w-0">
+                        <h3 className="font-display text-sm font-semibold text-charcoal truncate">{th.name}</h3>
+                        <p className="text-[11px] text-muted truncate">{th.title}</p>
+                      </div>
+                    </div>
+                    <dl className="text-xs space-y-1 text-muted">
+                      <div className="flex gap-2"><dt className="font-semibold text-charcoal shrink-0">Focus:</dt><dd className="truncate">{th.specialization}</dd></div>
+                      <div className="flex gap-2"><dt className="font-semibold text-charcoal shrink-0">Rating:</dt><dd>{th.rating} · {th.completed_sessions} sessions</dd></div>
+                    </dl>
+                    <div className="pt-3 border-t border-line/70 flex items-center justify-between gap-2">
+                      <StatusBadge status={th.status} />
+                      <Button variant="secondary" size="sm" onClick={() => setEditingTherapist(th)} icon={<Edit2 className="w-3 h-3" />}>
+                        Edit
+                      </Button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </motion.div>
+      </AnimatePresence>
+
+      {/* ============ MODALS ============ */}
+
+      <MedicalReportModal booking={selectedReportBooking} onClose={() => setSelectedReportBooking(null)} />
+
+      {/* Edit inventory item */}
+      <Modal open={!!editingItem} onClose={() => setEditingItem(null)} title="Edit formulation" subtitle={editingItem?.item_name}>
+        {editingItem && (
+          <form onSubmit={handleSaveInventoryEdit} className="space-y-4">
+            <Field label="Formulation name" htmlFor="inv-name" required>
+              <Input id="inv-name" value={editingItem.item_name} onChange={(e) => setEditingItem({ ...editingItem, item_name: e.target.value })} required />
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label={`Current stock (${editingItem.unit})`} htmlFor="inv-stock">
+                <Input id="inv-stock" type="number" step={50} value={editingItem.stock_ml} onChange={(e) => setEditingItem({ ...editingItem, stock_ml: Number(e.target.value) })} />
+              </Field>
+              <Field label="Minimum threshold" htmlFor="inv-threshold">
+                <Input id="inv-threshold" type="number" step={50} value={editingItem.min_threshold_ml} onChange={(e) => setEditingItem({ ...editingItem, min_threshold_ml: Number(e.target.value) })} />
+              </Field>
             </div>
-
-            <button
-              onClick={() => setIsAddingRoom(true)}
-              className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#2D3A3A] hover:bg-[#1E2525] text-white flex items-center space-x-1.5 shadow-sm transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Add Treatment Suite</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {rooms.map((r) => (
-              <div key={r.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-white text-slate-600 border border-slate-200">
-                      {r.room_code}
-                    </span>
-                    <h3 className="font-serif font-bold text-slate-900 text-sm mt-1">{r.room_name}</h3>
-                  </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                    r.is_operational ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'
-                  }`}>
-                    {r.is_operational ? 'Operational' : r.maintenance_status}
-                  </span>
-                </div>
-
-                <div className="text-xs text-slate-600 space-y-1">
-                  <p><strong>Droni Bed:</strong> {r.droni_wood}</p>
-                  <p><strong>Type:</strong> {r.room_type}</p>
-                </div>
-
-                <div className="pt-2 border-t border-slate-200 flex justify-end">
-                  <button
-                    onClick={() => setEditingRoom(r)}
-                    className="px-3 py-1 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-700 flex items-center gap-1 shadow-sm"
-                  >
-                    <Edit2 className="w-3 h-3 text-[#8B9D83]" />
-                    <span>Edit Chamber</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* VIEW 4: VAIDYAS & PRACTITIONERS */}
-      {activeSubTab === 'therapists' && (
-        <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-8 shadow-sm space-y-6">
-          <div className="pb-4 border-b border-slate-200">
-            <div className="flex items-center space-x-2">
-              <User className="w-5 h-5 text-[#8B9D83]" />
-              <h2 className="text-xl font-serif font-bold text-slate-900">
-                Vaidyas & Panchakarma Staff Management
-              </h2>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Category" htmlFor="inv-category">
+                <Select id="inv-category" value={editingItem.category} onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value as InventoryItem['category'] })}>
+                  <option value="Medicated Oil">Medicated Oil</option>
+                  <option value="Herbal Decoction">Herbal Decoction</option>
+                  <option value="Herbal Churna">Herbal Churna</option>
+                  <option value="Ghee & Butter">Ghee & Butter</option>
+                  <option value="Linen & Accessories">Linen & Accessories</option>
+                </Select>
+              </Field>
+              <Field label="Batch number" htmlFor="inv-batch">
+                <Input id="inv-batch" value={editingItem.batch_number || ''} onChange={(e) => setEditingItem({ ...editingItem, batch_number: e.target.value })} />
+              </Field>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Manage therapist on-duty status, specializations, and practitioner allocations.
-            </p>
+            <ModalActions onCancel={() => setEditingItem(null)} submitLabel="Save changes" />
+          </form>
+        )}
+      </Modal>
+
+      {/* Add new inventory item */}
+      <Modal open={isAddingNewItem} onClose={() => setIsAddingNewItem(false)} title="Add new formulation" subtitle="Register a medicated oil or Ayurvedic preparation">
+        <form onSubmit={handleAddNewItemSubmit} className="space-y-4">
+          <Field label="Formulation name" htmlFor="new-inv-name" required>
+            <Input id="new-inv-name" placeholder="e.g. Bala Ashwagandhadi Thailam" value={newItemForm.item_name} onChange={(e) => setNewItemForm({ ...newItemForm, item_name: e.target.value })} required />
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Initial stock (mL)" htmlFor="new-inv-stock">
+              <Input id="new-inv-stock" type="number" step={100} value={newItemForm.stock_ml} onChange={(e) => setNewItemForm({ ...newItemForm, stock_ml: Number(e.target.value) })} />
+            </Field>
+            <Field label="Min threshold (mL)" htmlFor="new-inv-min">
+              <Input id="new-inv-min" type="number" step={50} value={newItemForm.min_threshold_ml} onChange={(e) => setNewItemForm({ ...newItemForm, min_threshold_ml: Number(e.target.value) })} />
+            </Field>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {therapists.map((th) => (
-              <div key={th.id} className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
-                <div className="flex items-center space-x-3">
-                  <img
-                    src={th.avatar_url}
-                    alt={th.name}
-                    className="w-10 h-10 rounded-full object-cover border border-[#8B9D83]"
-                  />
-                  <div>
-                    <h3 className="font-serif font-bold text-slate-900 text-sm">{th.name}</h3>
-                    <span className="text-[11px] text-slate-500">{th.title}</span>
-                  </div>
-                </div>
-
-                <div className="text-xs text-slate-600 space-y-1">
-                  <p><strong>Specialization:</strong> {th.specialization}</p>
-                  <p><strong>Phone:</strong> {th.phone}</p>
-                  <p>
-                    <strong>Status:</strong>{' '}
-                    <span className={`font-semibold ${th.status === 'Available' ? 'text-emerald-700' : 'text-orange-700'}`}>
-                      {th.status}
-                    </span>
-                  </p>
-                </div>
-
-                <div className="pt-2 border-t border-slate-200 flex justify-end">
-                  <button
-                    onClick={() => setEditingTherapist(th)}
-                    className="px-3 py-1 text-xs font-semibold bg-white border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-700 flex items-center gap-1 shadow-sm"
-                  >
-                    <Edit2 className="w-3 h-3 text-[#8B9D83]" />
-                    <span>Edit Status</span>
-                  </button>
-                </div>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Category" htmlFor="new-inv-cat">
+              <Select id="new-inv-cat" value={newItemForm.category} onChange={(e) => setNewItemForm({ ...newItemForm, category: e.target.value })}>
+                <option value="Medicated Oil">Medicated Oil (Thailam)</option>
+                <option value="Herbal Decoction">Decoction (Kashayam)</option>
+                <option value="Herbal Churna">Powder (Choornam)</option>
+                <option value="Ghee & Butter">Ghee (Ghritam)</option>
+                <option value="Linen & Accessories">Linen & Accessories</option>
+              </Select>
+            </Field>
+            <Field label="Batch code" htmlFor="new-inv-batch">
+              <Input id="new-inv-batch" value={newItemForm.batch_number} onChange={(e) => setNewItemForm({ ...newItemForm, batch_number: e.target.value })} placeholder="BATCH-2026-A" />
+            </Field>
           </div>
-        </div>
-      )}
+          <ModalActions onCancel={() => setIsAddingNewItem(false)} submitLabel="Add to inventory" />
+        </form>
+      </Modal>
 
-      {/* EDIT INVENTORY ITEM MODAL */}
-      {editingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white border border-slate-200 rounded-xl max-w-lg w-full p-6 text-slate-800 shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-lg font-serif font-bold text-slate-900">
-                Edit Medicated Formulation
-              </h3>
-              <button onClick={() => setEditingItem(null)} className="text-slate-400 hover:text-slate-600">
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveInventoryEdit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Formulation Name</label>
-                <input
-                  type="text"
-                  value={editingItem.item_name}
-                  onChange={(e) => setEditingItem({ ...editingItem, item_name: e.target.value })}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Current Stock (mL)</label>
-                  <input
-                    type="number"
-                    step="50"
-                    value={editingItem.stock_ml}
-                    onChange={(e) => setEditingItem({ ...editingItem, stock_ml: Number(e.target.value) })}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Min Threshold (mL)</label>
-                  <input
-                    type="number"
-                    step="50"
-                    value={editingItem.min_threshold_ml}
-                    onChange={(e) => setEditingItem({ ...editingItem, min_threshold_ml: Number(e.target.value) })}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
-                  <input
-                    type="text"
-                    value={editingItem.category}
-                    onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Batch Number</label>
-                  <input
-                    type="text"
-                    value={editingItem.batch_number || ''}
-                    onChange={(e) => setEditingItem({ ...editingItem, batch_number: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingItem(null)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-[#2D3A3A] hover:bg-[#1E2525] text-white shadow-sm"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ADD NEW INVENTORY ITEM MODAL */}
-      {isAddingNewItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white border border-slate-200 rounded-xl max-w-lg w-full p-6 text-slate-800 shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-lg font-serif font-bold text-slate-900">
-                Add New Medicated Oil Formulation
-              </h3>
-              <button onClick={() => setIsAddingNewItem(false)} className="text-slate-400 hover:text-slate-600">
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleAddNewItemSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Formulation / Oil Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Bala Ashwagandhadi Thailam"
-                  value={newItemForm.item_name}
-                  onChange={(e) => setNewItemForm({ ...newItemForm, item_name: e.target.value })}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Initial Stock (mL)</label>
-                  <input
-                    type="number"
-                    step="100"
-                    value={newItemForm.stock_ml}
-                    onChange={(e) => setNewItemForm({ ...newItemForm, stock_ml: Number(e.target.value) })}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Min Threshold (mL)</label>
-                  <input
-                    type="number"
-                    step="50"
-                    value={newItemForm.min_threshold_ml}
-                    onChange={(e) => setNewItemForm({ ...newItemForm, min_threshold_ml: Number(e.target.value) })}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
-                  <select
-                    value={newItemForm.category}
-                    onChange={(e) => setNewItemForm({ ...newItemForm, category: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                  >
-                    <option value="Medicated Oil">Medicated Oil (Thailam)</option>
-                    <option value="Herbal Ghee">Herbal Ghee (Ghritam)</option>
-                    <option value="Herbal Powder">Herbal Powder (Choornam)</option>
-                    <option value="Decoction">Decoction (Kashayam)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Batch Code</label>
-                  <input
-                    type="text"
-                    value={newItemForm.batch_number}
-                    onChange={(e) => setNewItemForm({ ...newItemForm, batch_number: e.target.value })}
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddingNewItem(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-[#2D3A3A] hover:bg-[#1E2525] text-white shadow-sm"
-                >
-                  + Add to Inventory
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* QUICK RESTOCK MODAL */}
-      {restockModalItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white border border-slate-200 rounded-xl max-w-md w-full p-6 text-slate-800 shadow-xl space-y-4">
-            <h3 className="text-lg font-serif font-bold text-slate-900">
-              Restock Medicated Oil
-            </h3>
-            <p className="text-xs text-slate-500">
-              Select formulation and batch volume addition for <strong className="text-slate-800">{restockModalItem.item_name}</strong>. Current stock: {restockModalItem.stock_ml} mL.
-            </p>
-
-            <div className="space-y-2">
-              <label className="block text-xs font-semibold text-slate-700">Select Oil Formulation</label>
-              <select
+      {/* Quick restock */}
+      <Modal open={!!restockModalItem} onClose={() => setRestockModalItem(null)} title="Quick restock" subtitle={restockModalItem ? `${restockModalItem.item_name} · currently ${restockModalItem.stock_ml} mL` : undefined}>
+        {restockModalItem && (
+          <div className="space-y-4">
+            <Field label="Formulation" htmlFor="restock-item">
+              <Select
+                id="restock-item"
                 value={restockModalItem.id}
                 onChange={(e) => {
                   const item = inventory.find((i) => i.id === e.target.value);
                   if (item) setRestockModalItem(item);
                 }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#8B9D83]"
               >
                 {inventory.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.item_name} ({i.stock_ml} mL)
-                  </option>
+                  <option key={i.id} value={i.id}>{i.item_name} ({i.stock_ml} mL)</option>
                 ))}
-              </select>
-            </div>
+              </Select>
+            </Field>
+            <Field label="Volume to add (mL)" htmlFor="restock-amt" hint={`New balance: ${restockModalItem.stock_ml + Number(restockAmount || 0)} mL`}>
+              <Input id="restock-amt" type="number" step={250} min={250} value={restockAmount} onChange={(e) => setRestockAmount(Number(e.target.value))} />
+            </Field>
+            <ModalActions
+              onCancel={() => setRestockModalItem(null)}
+              submitLabel={`Confirm (+${restockAmount} mL)`}
+              onSubmit={() => {
+                ayurEngine.restockItem(restockModalItem.id, Number(restockAmount));
+                setRestockModalItem(null);
+              }}
+            />
+          </div>
+        )}
+      </Modal>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Volume to add (mL)</label>
-              <input
-                type="number"
-                step="250"
-                min="250"
-                value={restockAmount}
-                onChange={(e) => setRestockAmount(Number(e.target.value))}
-                className="w-full bg-white border border-slate-200 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-              />
-            </div>
-
-            <div className="flex items-center justify-end space-x-3 pt-2">
-              <button
-                onClick={() => setRestockModalItem(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  ayurEngine.restockItem(restockModalItem.id, Number(restockAmount));
-                  setRestockModalItem(null);
+      {/* Edit room */}
+      <Modal open={!!editingRoom} onClose={() => setEditingRoom(null)} title="Edit chamber" subtitle={editingRoom?.room_name}>
+        {editingRoom && (
+          <form onSubmit={handleSaveRoomEdit} className="space-y-4">
+            <Field label="Room name" htmlFor="room-name" required>
+              <Input id="room-name" value={editingRoom.room_name} onChange={(e) => setEditingRoom({ ...editingRoom, room_name: e.target.value })} required />
+            </Field>
+            <Field label="Droni bed wood type" htmlFor="room-wood">
+              <Select id="room-wood" value={editingRoom.droni_wood} onChange={(e) => setEditingRoom({ ...editingRoom, droni_wood: e.target.value })}>
+                <option>Teak Wood (Sagwan)</option>
+                <option>Rosewood (Sheesham)</option>
+                <option>Anjili Wood (Wild Jack)</option>
+                <option>Neem Wood (Margosa)</option>
+              </Select>
+            </Field>
+            <Field label="Maintenance status" htmlFor="room-status">
+              <Select
+                id="room-status"
+                value={editingRoom.maintenance_status}
+                onChange={(e) => {
+                  const status = e.target.value as ResourceRoom['maintenance_status'];
+                  setEditingRoom({
+                    ...editingRoom,
+                    maintenance_status: status,
+                    is_operational: status === 'Operational',
+                  });
                 }}
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-[#2D3A3A] hover:bg-[#1E2525] text-white shadow-sm"
               >
-                Confirm Restock (+{restockAmount} mL)
-              </button>
-            </div>
+                <option value="Operational">Operational (ready for bookings)</option>
+                <option value="Sanitizing">Sanitizing / post-oleation</option>
+                <option value="Maintenance">Under maintenance</option>
+                <option value="Inspection">Inspection</option>
+              </Select>
+            </Field>
+            <ModalActions onCancel={() => setEditingRoom(null)} submitLabel="Save configuration" />
+          </form>
+        )}
+      </Modal>
+
+      {/* Add room */}
+      <Modal open={isAddingRoom} onClose={() => setIsAddingRoom(false)} title="Add treatment chamber" subtitle="Register a new Droni suite">
+        <form onSubmit={handleAddRoomSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Room name" htmlFor="new-room-name" required>
+              <Input id="new-room-name" placeholder="Sushruta Chamber" value={newRoomForm.room_name} onChange={(e) => setNewRoomForm({ ...newRoomForm, room_name: e.target.value })} required />
+            </Field>
+            <Field label="Room code" htmlFor="new-room-code" hint="auto if empty">
+              <Input id="new-room-code" placeholder="ROOM-105" value={newRoomForm.room_code} onChange={(e) => setNewRoomForm({ ...newRoomForm, room_code: e.target.value })} />
+            </Field>
           </div>
-        </div>
-      )}
-
-      {/* EDIT ROOM MODAL */}
-      {editingRoom && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white border border-slate-200 rounded-xl max-w-md w-full p-6 text-slate-800 shadow-xl space-y-4">
-            <h3 className="text-lg font-serif font-bold text-slate-900">
-              Edit Room: {editingRoom.room_name}
-            </h3>
-
-            <form onSubmit={handleSaveRoomEdit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Room Name</label>
-                <input
-                  type="text"
-                  value={editingRoom.room_name}
-                  onChange={(e) => setEditingRoom({ ...editingRoom, room_name: e.target.value })}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Droni Bed Wood Type</label>
-                <select
-                  value={editingRoom.droni_wood}
-                  onChange={(e) => setEditingRoom({ ...editingRoom, droni_wood: e.target.value })}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                >
-                  <option value="Teak Wood (Sagwan)">Teak Wood (Sagwan)</option>
-                  <option value="Rosewood (Sheesham)">Rosewood (Sheesham)</option>
-                  <option value="Anjili Wood (Wild Jack)">Anjili Wood (Wild Jack)</option>
-                  <option value="Neem Wood (Margosa)">Neem Wood (Margosa)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Maintenance Status</label>
-                <select
-                  value={editingRoom.maintenance_status}
-                  onChange={(e) => {
-                    const status = e.target.value as ResourceRoom['maintenance_status'];
-                    setEditingRoom({ 
-                      ...editingRoom, 
-                      maintenance_status: status,
-                      is_operational: status === 'Operational'
-                    });
-                  }}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                >
-                  <option value="Operational">Operational (Ready for bookings)</option>
-                  <option value="Sanitizing">Sanitizing / Post-Oleation</option>
-                  <option value="Maintenance">Under Maintenance</option>
-                  <option value="Inspection">Inspection</option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingRoom(null)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-[#2D3A3A] hover:bg-[#1E2525] text-white shadow-sm"
-                >
-                  Save Chamber Config
-                </button>
-              </div>
-            </form>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Droni bed wood" htmlFor="new-room-wood">
+              <Select id="new-room-wood" value={newRoomForm.droni_wood} onChange={(e) => setNewRoomForm({ ...newRoomForm, droni_wood: e.target.value })}>
+                <option>Teak Wood (Sagwan)</option>
+                <option>Rosewood (Sheesham)</option>
+                <option>Anjili Wood (Wild Jack)</option>
+                <option>Neem Wood (Margosa)</option>
+              </Select>
+            </Field>
+            <Field label="Maintenance status" htmlFor="new-room-status">
+              <Select id="new-room-status" value={newRoomForm.maintenance_status} onChange={(e) => setNewRoomForm({ ...newRoomForm, maintenance_status: e.target.value as ResourceRoom['maintenance_status'] })}>
+                <option value="Operational">Operational</option>
+                <option value="Sanitizing">Sanitizing</option>
+                <option value="Maintenance">Under maintenance</option>
+                <option value="Inspection">Inspection</option>
+              </Select>
+            </Field>
           </div>
+          <ModalActions onCancel={() => setIsAddingRoom(false)} submitLabel="Add chamber" />
+        </form>
+      </Modal>
+
+      {/* Edit therapist */}
+      <Modal open={!!editingTherapist} onClose={() => setEditingTherapist(null)} title="Edit practitioner" subtitle={editingTherapist?.name}>
+        {editingTherapist && (
+          <form onSubmit={handleSaveTherapistEdit} className="space-y-4">
+            <Field label="Availability status" htmlFor="th-status">
+              <Select id="th-status" value={editingTherapist.status} onChange={(e) => setEditingTherapist({ ...editingTherapist, status: e.target.value as Therapist['status'] })}>
+                <option value="Available">Available (on duty)</option>
+                <option value="In Session">In Session (occupied)</option>
+                <option value="On Leave">On Leave (offline)</option>
+              </Select>
+            </Field>
+            <Field label="Specialization" htmlFor="th-spec">
+              <Input id="th-spec" value={editingTherapist.specialization} onChange={(e) => setEditingTherapist({ ...editingTherapist, specialization: e.target.value })} />
+            </Field>
+            <ModalActions onCancel={() => setEditingTherapist(null)} submitLabel="Save practitioner" />
+          </form>
+        )}
+      </Modal>
+
+      {/* Reject booking */}
+      <Modal open={!!rejectingBooking} onClose={() => setRejectingBooking(null)} title="Cancel booking" subtitle={rejectingBooking ? `${rejectingBooking.booking_ref} · ${rejectingBooking.client_name}` : undefined}>
+        <div className="space-y-4">
+          <p className="text-xs text-muted leading-relaxed">
+            Specify the reason for cancellation. If oil was previously deducted, it will be refunded back to the inventory balance.
+          </p>
+          <Field label="Reason for rejection" htmlFor="reject-reason">
+            <Textarea id="reject-reason" rows={3} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+          </Field>
+          <ModalActions
+            onCancel={() => setRejectingBooking(null)}
+            cancelLabel="Keep booking"
+            submitLabel="Confirm cancellation"
+            danger
+            onSubmit={handleRejectConfirm}
+          />
         </div>
-      )}
-
-      {/* EDIT THERAPIST MODAL */}
-      {editingTherapist && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white border border-slate-200 rounded-xl max-w-md w-full p-6 text-slate-800 shadow-xl space-y-4">
-            <h3 className="text-lg font-serif font-bold text-slate-900">
-              Edit Practitioner: {editingTherapist.name}
-            </h3>
-
-            <form onSubmit={handleSaveTherapistEdit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Availability Status</label>
-                <select
-                  value={editingTherapist.status}
-                  onChange={(e) => setEditingTherapist({ ...editingTherapist, status: e.target.value as Therapist['status'] })}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                >
-                  <option value="Available">Available (On-Duty)</option>
-                  <option value="In Session">In Session (Occupied)</option>
-                  <option value="On Leave">On Leave (Offline)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Specialization</label>
-                <input
-                  type="text"
-                  value={editingTherapist.specialization}
-                  onChange={(e) => setEditingTherapist({ ...editingTherapist, specialization: e.target.value })}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Contact</label>
-                <input
-                  type="text"
-                  value={editingTherapist.phone || ''}
-                  onChange={(e) => setEditingTherapist({ ...editingTherapist, phone: e.target.value })}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#8B9D83]"
-                />
-              </div>
-
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingTherapist(null)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-lg text-xs font-semibold bg-[#2D3A3A] hover:bg-[#1E2525] text-white shadow-sm"
-                >
-                  Save Practitioner Status
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Reject Reason Modal */}
-      {rejectingBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white border border-slate-200 rounded-xl max-w-md w-full p-6 text-slate-800 shadow-xl space-y-4">
-            <h3 className="text-lg font-serif font-bold text-red-600">
-              Reject / Cancel Booking {rejectingBooking.booking_ref}
-            </h3>
-            <p className="text-xs text-slate-500">
-              Please specify the reason for cancellation. If oil was previously deducted, it will be refunded back to the inventory balance.
-            </p>
-
-            <div>
-              <label className="block text-xs text-slate-600 mb-1">Reason for Rejection</label>
-              <textarea
-                rows={3}
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2 text-xs text-slate-800 focus:outline-none focus:border-red-500"
-              />
-            </div>
-
-            <div className="flex items-center justify-end space-x-3 pt-2">
-              <button
-                onClick={() => setRejectingBooking(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-500 hover:text-slate-700"
-              >
-                Keep Booking
-              </button>
-              <button
-                onClick={handleRejectConfirm}
-                className="px-4 py-2 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white shadow-sm"
-              >
-                Confirm Rejection
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Medical Dossier Modal */}
-      <MedicalReportModal
-        booking={selectedReportBooking}
-        onClose={() => setSelectedReportBooking(null)}
-      />
-
+      </Modal>
     </div>
   );
 };
+
+/* ---------------- helpers ---------------- */
+
+const ConstraintPill: React.FC<{ ok: boolean; label: string; caption: string }> = ({ ok, label, caption }) => (
+  <div className="hidden md:flex flex-col items-center min-w-[72px]">
+    <span className={`inline-flex items-center gap-1 text-[11px] font-bold ${ok ? 'text-success' : 'text-danger'}`}>
+      {ok ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
+      {ok ? 'OK' : 'Blocked'}
+    </span>
+    <span className="text-[10px] text-muted mt-0.5 truncate max-w-[80px]">
+      {caption}: {label}
+    </span>
+  </div>
+);
+
+const ModalActions: React.FC<{
+  onCancel: () => void;
+  submitLabel: string;
+  cancelLabel?: string;
+  danger?: boolean;
+  onSubmit?: () => void;
+}> = ({ onCancel, submitLabel, cancelLabel = 'Cancel', danger, onSubmit }) => (
+  <div className="pt-3 border-t border-line flex justify-end gap-3">
+    <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+      {cancelLabel}
+    </Button>
+    {onSubmit ? (
+      <Button type="button" variant={danger ? 'danger' : 'primary'} size="sm" onClick={onSubmit}>
+        {submitLabel}
+      </Button>
+    ) : (
+      <Button type="submit" variant={danger ? 'danger' : 'primary'} size="sm">
+        {submitLabel}
+      </Button>
+    )}
+  </div>
+);
+// (helper components above)
+
+

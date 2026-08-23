@@ -1,29 +1,163 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Poppins', 'Inter', system-ui, sans-serif;
+
+  /* Brand palette */
+  --color-forest-deep: #173F35;
+  --color-forest: #245C4A;
+  --color-sage: #7FA58D;
+  --color-sage-soft: #DDEBE3;
+  --color-mint: #EAF5EF;
+  --color-ivory: #F8F7F2;
+  --color-charcoal: #17201D;
+  --color-muted: #66736D;
+  --color-gold: #C9A86A;
+
+  /* Semantic */
+  --color-success: #2E8B68;
+  --color-warning: #C58A35;
+  --color-danger: #C75C5C;
+  --color-info: #4D7EA8;
+
+  /* Borders */
+  --color-line: rgba(23, 63, 53, 0.1);
+}
+
 @layer base {
-  body {
-    background-color: #F8F9F8;
-    color: #1e293b;
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  html {
+    scroll-behavior: smooth;
   }
 
-  h1, h2, h3, .font-serif {
-    font-family: 'Playfair Display', Georgia, Cambria, 'Times New Roman', Times, serif;
+  body {
+    background-color: var(--color-ivory);
+    color: var(--color-charcoal);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-display);
+  }
+
+  ::selection {
+    background-color: rgba(127, 165, 141, 0.35);
+    color: var(--color-forest-deep);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-sage);
+    outline-offset: 2px;
+  }
+
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.55;
   }
 }
 
-/* Custom scrollbar */
+/* ---------- Layered ambient background ---------- */
+.app-bg {
+  position: relative;
+  min-height: 100vh;
+}
+
+.app-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(900px 520px at 85% -10%, rgba(127, 165, 141, 0.16), transparent 60%),
+    radial-gradient(700px 480px at -10% 30%, rgba(36, 92, 74, 0.08), transparent 55%),
+    radial-gradient(640px 420px at 50% 110%, rgba(201, 168, 106, 0.07), transparent 60%),
+    var(--color-ivory);
+}
+
+/* Subtle grain for depth (very low cost) */
+.app-bg::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---------- Glassmorphism (selective use) ---------- */
+/* NOTE: these live in @layer components so Tailwind utilities (utilities
+   layer) can always override them — e.g. bg-forest-deep on a Card. */
+@layer components {
+  .glass {
+    background: rgba(255, 255, 255, 0.68);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    box-shadow: 0 20px 60px rgba(23, 63, 53, 0.08);
+  }
+
+  .glass-strong {
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow: 0 24px 70px rgba(23, 63, 53, 0.12);
+  }
+
+  /* Dark panel glass (dev tools / code) */
+  .glass-dark {
+    background: rgba(23, 32, 29, 0.92);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(127, 165, 141, 0.18);
+  }
+
+  /* ---------- Surfaces ---------- */
+  .surface {
+    background: #ffffff;
+    border: 1px solid var(--color-line);
+    box-shadow: 0 1px 2px rgba(23, 63, 53, 0.04), 0 8px 24px rgba(23, 63, 53, 0.05);
+  }
+
+  .surface-hover:hover {
+    box-shadow: 0 4px 10px rgba(23, 63, 53, 0.06), 0 16px 40px rgba(23, 63, 53, 0.09);
+    transform: translateY(-1px);
+  }
+}
+
+/* ---------- Scrollbar ---------- */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: rgba(23, 63, 53, 0.18);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: rgba(23, 63, 53, 0.32);
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+/* ---------- Transitions ---------- */
+button, a, input, select, textarea {
+  transition: color .15s ease, background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .15s ease, opacity .15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
