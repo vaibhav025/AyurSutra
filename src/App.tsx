@@ -16,9 +16,6 @@ export default function App() {
   const [session, setSession] = useState<any>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
 
   // App State
   const [activeTab, setActiveTab] = useState<ActiveTab>('client');
@@ -29,7 +26,7 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session?.user?.email) fetchRole(session.user.email);
+      if (session?.user) fetchRoleFromDatabase(session.user.id);
       else setAuthLoading(false);
     });
 
@@ -37,26 +34,44 @@ export default function App() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session?.user?.email) fetchRole(session.user.email);
+      if (session?.user) fetchRoleFromDatabase(session.user.id);
+      else {
+        setUserRole(null);
+        setAuthLoading(false);
+      }
     });
 
     return () => subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2. Role assignment based on email (preserved behavior)
-  const fetchRole = (email: string) => {
-    let role = 'client'; // default
-    if (email.includes('admin')) role = 'receptionist';
-    if (email.includes('doctor')) role = 'therapist';
+  // 2. Fetch REAL Role from Supabase Database profiles table
+  const fetchRoleFromDatabase = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
 
-    setUserRole(role);
+      if (data && !error) {
+        const role = data.role || 'client';
+        setUserRole(role);
 
-    if (role === 'receptionist') setActiveTab('receptionist');
-    else if (role === 'therapist') setActiveTab('therapist');
-    else setActiveTab('client');
-
-    setAuthLoading(false);
+        // Auto-route based on actual database role
+        if (role === 'receptionist') setActiveTab('receptionist');
+        else if (role === 'therapist') setActiveTab('therapist');
+        else setActiveTab('client');
+      } else {
+        // Fallback default if profile row hasn't populated yet
+        setUserRole('client');
+        setActiveTab('client');
+      }
+    } catch (err) {
+      console.error("Error fetching user profile role:", err);
+      setUserRole('client');
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   // Metrics listener for shell badges
@@ -72,16 +87,6 @@ export default function App() {
     updateMetrics();
     return ayurEngine.subscribe(updateMetrics);
   }, []);
-
-  // Handle Login Submission
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError('');
-    setAuthLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setLoginError(error.message);
-    setAuthLoading(false);
-  };
 
   // Loading state
   if (authLoading && !session) {
@@ -99,19 +104,9 @@ export default function App() {
     );
   }
 
-  // Login screen
+  // Login screen (handled by LoginScreen component which includes Sign Up & Role Selector)
   if (!session || !userRole) {
-    return (
-      <LoginScreen
-        onLogin={handleLogin}
-        loading={authLoading}
-        error={loginError}
-        email={email}
-        password={password}
-        setEmail={setEmail}
-        setPassword={setPassword}
-      />
-    );
+    return <LoginScreen />;
   }
 
   // Authenticated app
