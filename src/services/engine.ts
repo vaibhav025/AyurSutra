@@ -28,7 +28,10 @@ class AyurSutraEngine {
   private bookings: Booking[] = [];
   private auditLogs: RealtimeAuditLog[] = [];
   private listeners: Set<Listener> = new Set();
-  private storageKey = 'ayursutra_state_v1';
+  
+  // VERSION BUMP: Changing this automatically forces all laptops to clear old cache 
+  // and load the latest oils/inventory without needing console commands.
+  private storageKey = 'ayursutra_state_v3'; 
 
   constructor() {
     this.loadState();
@@ -69,6 +72,11 @@ class AyurSutraEngine {
 
   private loadState() {
     try {
+      // AUTO-CLEANUP: Automatically destroy older buggy versions from the user's browser
+      localStorage.removeItem('ayursutra_state_v1');
+      localStorage.removeItem('ayursutra_state_v2');
+      localStorage.removeItem('ayursutra_state');
+
       const saved = localStorage.getItem(this.storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
@@ -447,6 +455,7 @@ class AyurSutraEngine {
         const invIndex = this.inventory.findIndex((i) => i.item_name === therapy.oil_type);
         if (invIndex !== -1) {
           this.inventory[invIndex].stock_ml += therapy.oil_required_ml;
+          this.saveState();
         }
       }
     }
