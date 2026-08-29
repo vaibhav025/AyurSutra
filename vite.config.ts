@@ -1,25 +1,38 @@
-import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import path from 'path';
+import { defineConfig } from 'vite';
 
-export default defineConfig({
-  plugins: [react()],
-  build: {
-    // 1. Increases the warning threshold to 1000 kB (1 MB)
-    chunkSizeWarningLimit: 1000, 
-    
-    // 2. Splits big libraries into smaller, manageable chunks
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('react')) return 'vendor-react';
-            if (id.includes('lucide-react')) return 'vendor-lucide';
-            if (id.includes('motion') || id.includes('framer-motion')) return 'vendor-motion';
-            if (id.includes('@supabase')) return 'vendor-supabase';
-            return 'vendor-core'; // All other third-party deps
+export default defineConfig(() => {
+  return {
+    plugins: [react(), tailwindcss()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      },
+    },
+    server: {
+      // HMR is disabled in AI Studio via DISABLE_HMR env var.
+      // Do not modify—file watching is disabled to prevent flickering during agent edits.
+      hmr: process.env.DISABLE_HMR !== 'true',
+      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
+      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    },
+    build: {
+      chunkSizeWarningLimit: 1000, 
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('react')) return 'vendor-react';
+              if (id.includes('lucide-react')) return 'vendor-lucide';
+              if (id.includes('motion') || id.includes('framer-motion')) return 'vendor-motion';
+              if (id.includes('@supabase')) return 'vendor-supabase';
+              return 'vendor-core';
+            }
           }
         }
       }
     }
-  }
+  };
 });
