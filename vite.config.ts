@@ -19,20 +19,8 @@ export default defineConfig(() => {
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
     build: {
-      chunkSizeWarningLimit: 1000, 
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (id.includes('node_modules')) {
-              if (id.includes('react')) return 'vendor-react';
-              if (id.includes('lucide-react')) return 'vendor-lucide';
-              if (id.includes('motion') || id.includes('framer-motion')) return 'vendor-motion';
-              if (id.includes('@supabase')) return 'vendor-supabase';
-              return 'vendor-core';
-            }
-          }
-        }
-      }
+      // Safely suppresses the 500kB warning without breaking the dependency graph
+      chunkSizeWarningLimit: 1500 
     }
   };
 });
