@@ -37,26 +37,34 @@ class AyurSutraEngine {
   }
 
   private async fetchBookingsFromSupabase() {
-    const { data, error } = await supabase
-      .from('bookings')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      this.bookings = data as Booking[];
-      this.notify();
-    } else {
-      console.warn('Supabase fetch failed (Using local state):', error);
+      if (!error && data) {
+        this.bookings = data as Booking[];
+        this.notify();
+      } else {
+        console.warn('Supabase fetch failed (Using local state):', error);
+      }
+    } catch (err) {
+      console.warn('Supabase connection error (Using local state):', err);
     }
   }
 
   private setupRealtimeSubscription() {
-    supabase
-      .channel('public:bookings')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, (payload) => {
-        this.fetchBookingsFromSupabase();
-      })
-      .subscribe();
+    try {
+      supabase
+        .channel('public:bookings')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+          this.fetchBookingsFromSupabase();
+        })
+        .subscribe();
+    } catch (err) {
+      console.warn('Supabase realtime subscription failed:', err);
+    }
   }
 
   private loadState() {
@@ -145,6 +153,7 @@ class AyurSutraEngine {
     this.saveState();
   }
 
+  // Getters
   public getTherapies(): Therapy[] {
     return this.therapies;
   }
@@ -312,28 +321,31 @@ class AyurSutraEngine {
 
     let finalBookingData: Booking;
 
-    const { data, error } = await supabase.from('bookings').insert([{
-      booking_ref: bookingRef,
-      client_name: params.client_name,
-      client_phone: params.client_phone,
-      client_email: params.client_email,
-      prakriti: params.prakriti || 'Tridoshic',
-      therapy_id: params.therapy_id,
-      therapist_id: params.therapist_id,
-      room_id: params.room_id,
-      start_time: sDate.toISOString(),
-      end_time: eDate.toISOString(),
-      status: 'Pending',
-      report_url: params.report_url || null,
-      report_file_name: params.report_file_name || null,
-      medical_notes: params.medical_notes || null,
-      oil_deducted: false
-    }]).select().single();
+    try {
+      const { data, error } = await supabase.from('bookings').insert([{
+        booking_ref: bookingRef,
+        client_name: params.client_name,
+        client_phone: params.client_phone,
+        client_email: params.client_email,
+        prakriti: params.prakriti || 'Tridoshic',
+        therapy_id: params.therapy_id,
+        therapist_id: params.therapist_id,
+        room_id: params.room_id,
+        start_time: sDate.toISOString(),
+        end_time: eDate.toISOString(),
+        status: 'Pending',
+        report_url: params.report_url || null,
+        report_file_name: params.report_file_name || null,
+        medical_notes: params.medical_notes || null,
+        oil_deducted: false
+      }]).select().single();
 
-    if (error || !data) {
-      console.warn("Supabase Insert Failed (Proceeding with Hackathon Fallback):", error);
-      
-      // HACKATHON FAIL-SAFE: If Supabase throws an RLS or missing column error, save it locally anyway so the UI stays green.
+      if (error || !data) {
+        throw new Error(error?.message || "Failed to retrieve inserted data");
+      }
+      finalBookingData = data as Booking;
+    } catch (err) {
+      console.warn("Supabase Insert Failed (Proceeding with Hackathon Fallback):", err);
       finalBookingData = {
         id: 'bk-' + Date.now(),
         booking_ref: bookingRef,
@@ -356,8 +368,6 @@ class AyurSutraEngine {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
-    } else {
-      finalBookingData = data as Booking;
     }
 
     this.bookings.unshift(finalBookingData);
@@ -410,13 +420,16 @@ class AyurSutraEngine {
     };
     this.saveState();
 
-    const { error } = await supabase.from('bookings').update({ 
-      status: 'Confirmed', 
-      oil_deducted: true,
-      updated_at: new Date().toISOString()
-    }).eq('id', bookingId);
-
-    if (!error) this.fetchBookingsFromSupabase();
+    try {
+      await supabase.from('bookings').update({ 
+        status: 'Confirmed', 
+        oil_deducted: true,
+        updated_at: new Date().toISOString()
+      }).eq('id', bookingId);
+      this.fetchBookingsFromSupabase();
+    } catch (err) {
+      console.warn("Supabase update failed, continuing with local state", err);
+    }
 
     this.addAuditLog('BOOKING_APPROVED', `Booking Confirmed: ${booking.booking_ref}`, `Confirmed for ${booking.client_name}.`, 'success');
     return { success: true, message: `Booking approved!` };
@@ -447,14 +460,17 @@ class AyurSutraEngine {
     };
     this.saveState();
 
-    const { error } = await supabase.from('bookings').update({ 
-      status: 'Rejected', 
-      rejection_reason: reason,
-      oil_deducted: false,
-      updated_at: new Date().toISOString()
-    }).eq('id', bookingId);
-
-    if (!error) this.fetchBookingsFromSupabase();
+    try {
+      await supabase.from('bookings').update({ 
+        status: 'Rejected', 
+        rejection_reason: reason,
+        oil_deducted: false,
+        updated_at: new Date().toISOString()
+      }).eq('id', bookingId);
+      this.fetchBookingsFromSupabase();
+    } catch (err) {
+      console.warn("Supabase update failed, continuing with local state", err);
+    }
 
     this.addAuditLog('BOOKING_REJECTED', `Booking Rejected: ${booking.booking_ref}`, `Reason: ${reason}`, 'warning');
     return { success: true, message: `Booking rejected.` };

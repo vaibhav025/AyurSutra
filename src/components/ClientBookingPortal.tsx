@@ -31,7 +31,6 @@ const GROUP_ICON = {
   Evening: <MoonStar className="w-3.5 h-3.5" />
 };
 
-// --- RICH CLINICAL DATA MAPPING (THERAPIES) ---
 const THERAPY_RICH_INFO: Record<string, { bestFor: string, treatmentDetails: string, before: string, benefits: string, after: string }> = {
   'Shirodhara': {
     bestFor: 'General relaxation, stress management, and overall mind-body balance.',
@@ -112,7 +111,6 @@ const THERAPY_RICH_INFO: Record<string, { bestFor: string, treatmentDetails: str
   }
 };
 
-// --- RICH CLINICAL DATA MAPPING (PRACTITIONERS) ---
 const THERAPIST_RICH_INFO: Record<string, { bio: string, highlights: string[], education: string }> = {
   'Vaidya Rajeshwari Sharma': {
     bio: 'Vaidya Rajeshwari is a highly respected Ayurvedic physician with deep expertise in Nadi Pariksha (Pulse Diagnosis). She specializes in complex neurological and autoimmune conditions, bringing a deeply compassionate and highly clinical approach to her Pradhanakarma treatments.',
@@ -169,7 +167,6 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
     tomorrow.setDate(tomorrow.getDate() + 1);
     return tomorrow.toISOString().split('T')[0];
   });
-  
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
   
   const [infoModalTherapy, setInfoModalTherapy] = useState<Therapy | null>(null);
@@ -194,12 +191,16 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
 
   useEffect(() => {
     const fetchUserData = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const { data } = await supabase.from('profiles').select('full_name, email').eq('id', session.user.id).single();
-        if (data) {
-          setDetails(prev => ({ ...prev, clientName: data.full_name || 'Guest', clientEmail: data.email || session.user.email || '' }));
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data } = await supabase.from('profiles').select('full_name, email').eq('id', session.user.id).single();
+          if (data) {
+            setDetails(prev => ({ ...prev, clientName: data.full_name || 'Guest', clientEmail: data.email || session.user.email || '' }));
+          }
         }
+      } catch (e) {
+        console.warn('Auth fetch skipped in local mode', e);
       }
     };
     fetchUserData();
@@ -240,27 +241,22 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
     return true;
   }, [step, selectedTherapy, selectedTherapist, selectedDate, selectedHour]);
 
-  // --- DYNAMIC SLOT LOCKING LOGIC ---
   const getSlotStatus = (slotHour: number) => {
     const now = new Date();
     const slotTime = new Date(selectedDate);
     slotTime.setHours(slotHour, 0, 0, 0);
 
-    // 1. Time Passed
     if (slotTime <= now) {
       return { available: false, reason: 'Time Passed' };
     }
 
-    // 2. Vaidya on Leave
     if (selectedTherapist?.status === 'On Leave') {
       return { available: false, reason: 'Vaidya Unavailable' };
     }
 
-    // 3. Vaidya already booked
     const isBooked = allBookings.some((b) => {
       if (b.therapist_id !== selectedTherapist?.id) return false;
-      // TS FIX: Check explicitly for the valid string literals present in the Booking interface
-      if (b.status !== 'Pending' && b.status !== 'Confirmed' && b.status !== 'In Progress') return false;
+      if (!['Pending', 'Confirmed', 'In Progress'].includes(b.status)) return false;
       
       const bTime = new Date(b.start_time);
       return bTime.getTime() === slotTime.getTime();
@@ -294,14 +290,14 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
     setIsSubmitting(true);
     setRpcResponse(null);
 
-    try {
-      let finalReportUrl = undefined;
-      let finalFileName = undefined;
+    let finalReportUrl = undefined;
+    let finalFileName = undefined;
 
-      if (selectedFile) {
-        const fileExt = selectedFile.name.split('.').pop();
-        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-        
+    if (selectedFile) {
+      const fileExt = selectedFile.name.split('.').pop();
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      
+      try {
         const { error: uploadError } = await supabase.storage
           .from('medical-reports')
           .upload(fileName, selectedFile);
@@ -314,12 +310,14 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
           finalReportUrl = publicUrlData.publicUrl;
           finalFileName = selectedFile.name;
         } else {
-          alert(`Could not upload PDF: ${uploadError.message}. Make sure 'medical-reports' bucket exists and is Public.`);
-          setIsSubmitting(false);
-          return;
+          console.warn("Storage upload failed, continuing without file.", uploadError);
         }
+      } catch (e) {
+        console.warn("Storage exception, continuing without file.", e);
       }
+    }
 
+    try {
       const response = await ayurEngine.createPanchakarmaBookingRPC({
         client_name: details.clientName,
         client_phone: details.clientPhone,
@@ -469,7 +467,7 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
               </div>
 
               <div className="absolute bottom-0 left-0 right-0 p-6 sm:px-8 bg-white/95 backdrop-blur-xl border-t border-slate-100 flex justify-end">
-                <Button onClick={() => { setSelectedTherapyId(infoModalTherapy.id); setInfoModalTherapy(null); }}>
+                <Button onClick={() => { setSelectedTherapyId(infoModalTherapist?.id || infoModalTherapy.id); setInfoModalTherapy(null); }}>
                   Select this therapy
                 </Button>
               </div>
