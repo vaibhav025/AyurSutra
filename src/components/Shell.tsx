@@ -125,7 +125,7 @@ export const Shell: React.FC<ShellProps> = ({
 
         <footer className="border-t border-line py-5 px-4 sm:px-8">
           <div className="max-w-[1400px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-muted">
-            <span>AyurSutra · Panchakarma Care OS</span>
+            <span>AyurSutra · Panchakarma Care OS  · Made by CodeCrunchers</span>
             <span>PostgreSQL engine · ACID compliant</span>
           </div>
         </footer>

@@ -3,6 +3,9 @@ import {
   FileText,
   ExternalLink,
   ShieldCheck,
+  Phone,
+  Mail,
+  FileWarning
 } from 'lucide-react';
 import { Booking } from '../types/ayursutra';
 import { Modal, Button, StatusBadge } from './ui';
@@ -31,7 +34,7 @@ export const MedicalReportModal: React.FC<MedicalReportModalProps> = ({
       onClose={onClose}
       title="Medical dossier"
       subtitle={`${booking.client_name} · ${booking.booking_ref}`}
-      maxWidth="max-w-2xl"
+      maxWidth="max-w-3xl"
     >
       <div className="space-y-6">
         {/* Patient overview */}
@@ -41,6 +44,43 @@ export const MedicalReportModal: React.FC<MedicalReportModalProps> = ({
           <InfoTile caption="Status" value={<StatusBadge status={booking.status} />} />
           <InfoTile caption="Vaidya" value={therapist?.name || 'Unassigned'} />
         </div>
+
+        {/* NEW: Patient Contact & Notes */}
+        <section className="space-y-3">
+          <h4 className="text-[11px] font-bold uppercase tracking-widest text-muted">
+            Patient Contact & Notes
+          </h4>
+          <div className="rounded-xl bg-ivory border border-line p-4 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-forest/10 flex items-center justify-center text-forest">
+                  <Phone className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Phone Number</p>
+                  <p className="text-xs font-semibold text-charcoal truncate">{booking.client_phone || 'Not provided'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-forest/10 flex items-center justify-center text-forest">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Email Address</p>
+                  <p className="text-xs font-semibold text-charcoal truncate">{booking.client_email || 'Not provided'}</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-3.5 bg-mint/30 rounded-xl border border-sage/20">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-forest-deep flex items-center gap-1.5 mb-1.5">
+                <FileWarning className="w-3.5 h-3.5" /> Medical Symptoms / Requests
+              </p>
+              <p className="text-xs text-charcoal leading-relaxed font-medium">
+                {booking.medical_notes || 'No specific medical notes provided by the patient.'}
+              </p>
+            </div>
+          </div>
+        </section>
 
         {/* Dosha assessment */}
         <section className="space-y-3">
@@ -107,15 +147,9 @@ export const MedicalReportModal: React.FC<MedicalReportModalProps> = ({
               </div>
             ))}
           </dl>
-          {booking.medical_notes && (
-            <p className="rounded-xl bg-mint/60 border border-sage/25 px-4 py-3 text-xs leading-relaxed text-forest-deep">
-              <strong className="font-semibold">Clinical notes: </strong>
-              {booking.medical_notes}
-            </p>
-          )}
         </section>
 
-        {/* Document */}
+        {/* Document - Will only show 'Open' if report_url exists */}
         <div className="flex items-center justify-between gap-3 rounded-xl bg-white border border-line px-4 py-3">
           <div className="flex items-center gap-3 min-w-0">
             <span className="w-10 h-10 rounded-xl bg-red-50 border border-red-200/60 text-danger flex items-center justify-center shrink-0">
@@ -126,18 +160,22 @@ export const MedicalReportModal: React.FC<MedicalReportModalProps> = ({
               <p className="text-[11px] text-muted">PDF document · Supabase Storage</p>
             </div>
           </div>
-          <a
-            href={booking.report_url || '#'}
-            target="_blank"
-            rel="noreferrer"
-            tabIndex={booking.report_url ? 0 : -1}
-            aria-disabled={!booking.report_url}
-            className="shrink-0"
-          >
-            <Button variant="secondary" size="sm" icon={<ExternalLink className="w-3.5 h-3.5" />}>
-              Open
+          {booking.report_url ? (
+            <a
+              href={booking.report_url}
+              target="_blank"
+              rel="noreferrer"
+              className="shrink-0"
+            >
+              <Button variant="secondary" size="sm" icon={<ExternalLink className="w-3.5 h-3.5" />}>
+                Open
+              </Button>
+            </a>
+          ) : (
+            <Button variant="secondary" size="sm" disabled>
+              No File
             </Button>
-          </a>
+          )}
         </div>
 
         {/* Footer note */}

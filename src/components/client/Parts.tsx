@@ -7,6 +7,7 @@ import {
   UploadCloud,
   FileText,
   X,
+  Info
 } from 'lucide-react';
 import type { Therapy, Therapist } from '../../types/ayursutra';
 
@@ -86,7 +87,8 @@ export const TherapyCard: React.FC<{
   therapy: Therapy;
   selected: boolean;
   onSelect: () => void;
-}> = ({ therapy: t, selected, onSelect }) => (
+  onInfoClick?: () => void;
+}> = ({ therapy: t, selected, onSelect, onInfoClick }) => (
   <motion.button
     type="button"
     onClick={onSelect}
@@ -103,15 +105,33 @@ export const TherapyCard: React.FC<{
       <span className="inline-flex px-2 py-0.5 rounded-full bg-sage-soft/70 border border-sage/25 text-[10px] font-bold uppercase tracking-wider text-forest">
         {t.category}
       </span>
-      {selected && (
-        <motion.span
-          initial={{ scale: 0.5, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="w-[22px] h-[22px] shrink-0 rounded-full bg-forest text-white flex items-center justify-center shadow-sm"
-        >
-          <Check className="w-3.5 h-3.5" strokeWidth={3} />
-        </motion.span>
-      )}
+      
+      {/* Wrapper for Info Icon & Checkmark */}
+      <div className="flex items-center gap-2">
+        {onInfoClick && (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              onInfoClick();
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full hover:bg-forest/10 text-slate-400 hover:text-forest transition-colors cursor-pointer"
+            title="View Details"
+          >
+            <Info className="w-3.5 h-3.5" />
+            <span className="text-[10px] font-bold uppercase tracking-widest mt-0.5">Details</span>
+          </div>
+        )}
+        
+        {selected && (
+          <motion.span
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-[22px] h-[22px] shrink-0 rounded-full bg-forest text-white flex items-center justify-center shadow-sm"
+          >
+            <Check className="w-3.5 h-3.5" strokeWidth={3} />
+          </motion.span>
+        )}
+      </div>
     </div>
 
     <h3 className="mt-2.5 font-display text-[15px] font-semibold text-forest-deep leading-snug">
@@ -142,7 +162,8 @@ export const PractitionerCard: React.FC<{
   therapist: Therapist;
   selected: boolean;
   onSelect: () => void;
-}> = ({ therapist: th, selected, onSelect }) => (
+  onInfoClick?: () => void;
+}> = ({ therapist: th, selected, onSelect, onInfoClick }) => (
   <motion.button
     type="button"
     onClick={onSelect}
@@ -168,11 +189,26 @@ export const PractitionerCard: React.FC<{
           <p className="font-display text-sm font-semibold text-forest-deep truncate">
             {th.name}
           </p>
-          {selected && (
-            <span className="shrink-0 w-5 h-5 rounded-full bg-forest text-white flex items-center justify-center">
-              <Check className="w-3 h-3" strokeWidth={3} />
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {onInfoClick && (
+              <div
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onInfoClick();
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full hover:bg-forest/10 text-slate-400 hover:text-forest transition-colors cursor-pointer"
+                title="View Profile"
+              >
+                <Info className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-bold uppercase tracking-widest mt-0.5 hidden sm:inline">Profile</span>
+              </div>
+            )}
+            {selected && (
+              <span className="shrink-0 w-5 h-5 rounded-full bg-forest text-white flex items-center justify-center">
+                <Check className="w-3 h-3" strokeWidth={3} />
+              </span>
+            )}
+          </div>
         </div>
         <p className="text-[11px] text-muted truncate">{th.title}</p>
         <p className="mt-0.5 text-[11px] font-medium text-sage truncate">
