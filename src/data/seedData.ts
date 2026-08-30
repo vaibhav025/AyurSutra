@@ -2,6 +2,17 @@ import { Therapy, InventoryItem, ResourceRoom, Therapist, Booking, RealtimeAudit
 
 export const INITIAL_THERAPIES: Therapy[] = [
   {
+    id: 'th-consult',
+    name: 'In-Person Consultation',
+    sanskrit_name: 'Vaidya Pramarsha (Offline)',
+    category: 'Consultation',
+    description: 'Detailed one-on-one physical consultation, pulse diagnosis (Nadi Pariksha), and personalized treatment planning with the Vaidya.',
+    duration_mins: 30,
+    price: 500,
+    oil_required_ml: 0,
+    oil_type: 'None',
+  },
+  {
     id: 'th-101',
     name: 'Shirodhara',
     sanskrit_name: 'शिरोधारा (Continuous Medicated Stream)',

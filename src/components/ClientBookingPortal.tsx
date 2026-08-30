@@ -3,23 +3,23 @@ import { AnimatePresence, motion } from 'motion/react';
 import {
   Leaf, ArrowRight, ArrowLeft, Sparkles, Sun, Sunset, MoonStar, 
   CircleCheck, CalendarPlus, History, Calendar as CalendarIcon, X, Info,
-  Target, AlertCircle, CheckCircle2, Star, Award, GraduationCap
+  Target, AlertCircle, CheckCircle2, Star, Award, GraduationCap, CreditCard, ShieldCheck
 } from 'lucide-react';
 import { ayurEngine } from '../services/engine';
 import type { Therapy, Therapist, ResourceRoom, BookingCreationRPCResponse, Booking } from '../types/ayursutra';
-import { Button, Badge, Card, Field, Input, Select, Textarea, FilterChip } from './ui';
+import { Button, Badge, Card, Field, Input, Select, Textarea, FilterChip, Modal } from './ui';
 import { Stepper, StepPanel, TherapyCard, PractitionerCard, UploadZone } from './client/Parts';
 import { supabase } from '../lib/supabaseClient';
 
 const TIME_SLOTS = [
-  { hour: 8, label: '08:00 AM', period: 'Morning Oleation' },
-  { hour: 9, label: '09:00 AM', period: 'Morning Oleation' },
+  { hour: 8, label: '08:00 AM', period: 'Morning Session' },
+  { hour: 9, label: '09:00 AM', period: 'Morning Session' },
   { hour: 10, label: '10:00 AM', period: 'Mid-Morning Session' },
   { hour: 11, label: '11:00 AM', period: 'Mid-Morning Session' },
-  { hour: 14, label: '02:00 PM', period: 'Afternoon Rejuvenation' },
-  { hour: 15, label: '03:00 PM', period: 'Afternoon Rejuvenation' },
-  { hour: 16, label: '04:00 PM', period: 'Evening Rasayana' },
-  { hour: 17, label: '05:00 PM', period: 'Evening Rasayana' },
+  { hour: 14, label: '02:00 PM', period: 'Afternoon Session' },
+  { hour: 15, label: '03:00 PM', period: 'Afternoon Session' },
+  { hour: 16, label: '04:00 PM', period: 'Evening Session' },
+  { hour: 17, label: '05:00 PM', period: 'Evening Session' },
 ];
 
 const slotGroup = (hour: number): 'Morning' | 'Afternoon' | 'Evening' =>
@@ -31,7 +31,36 @@ const GROUP_ICON = {
   Evening: <MoonStar className="w-3.5 h-3.5" />
 };
 
+const calculateAge = (dobString: string): number => {
+  if (!dobString) return 35; 
+  const today = new Date();
+  const birthDate = new Date(dobString);
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+};
+
+const loadRazorpayScript = () => {
+  return new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+};
+
 const THERAPY_RICH_INFO: Record<string, { bestFor: string, treatmentDetails: string, before: string, benefits: string, after: string }> = {
+  'In-Person Consultation': {
+    bestFor: 'Initial assessment, chronic condition analysis, Nadi Pariksha (Pulse diagnosis), and personalized treatment planning.',
+    treatmentDetails: 'A detailed one-on-one physical consultation with the Vaidya. Includes complete body constitution (Prakriti) assessment, dietary recommendations, and customized herbal prescriptions.',
+    before: 'Bring any past medical reports (blood tests, scans) and avoid eating a heavy meal just before pulse diagnosis.',
+    benefits: 'Get to the absolute root cause of your ailments with a customized, classical Ayurvedic healing roadmap.',
+    after: 'Follow the prescribed diet, lifestyle modifications, and medication schedule exactly as guided by the Vaidya.'
+  },
   'Shirodhara': {
     bestFor: 'General relaxation, stress management, and overall mind-body balance.',
     treatmentDetails: 'A gentle, continuous stream of warm oil or specialized liquid is poured over the forehead in a controlled manner while you rest comfortably. Sessions typically last 60–90 minutes based on your customized treatment plan.',
@@ -159,8 +188,8 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
   const [rooms, setRooms] = useState<ResourceRoom[]>(() => ayurEngine.getRooms());
   const [allBookings, setAllBookings] = useState<Booking[]>(() => ayurEngine.getBookings());
 
-  const [selectedTherapyId, setSelectedTherapyId] = useState('th-101');
-  const [selectedTherapistId, setSelectedTherapistId] = useState('tp-2');
+  const [selectedTherapyId, setSelectedTherapyId] = useState('th-consult'); 
+  const [selectedTherapistId, setSelectedTherapistId] = useState('tp-1');
   
   const [selectedDate, setSelectedDate] = useState(() => {
     const tomorrow = new Date();
@@ -172,10 +201,16 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
   const [infoModalTherapy, setInfoModalTherapy] = useState<Therapy | null>(null);
   const [infoModalTherapist, setInfoModalTherapist] = useState<Therapist | null>(null);
 
+  // PAYMENT MODAL STATE
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false); // NEW STATE FOR TICK MODAL
+  const [selectedBookingForPayment, setSelectedBookingForPayment] = useState<Booking | null>(null);
+
   const [details, setDetails] = useState({
     clientName: '',
     clientPhone: '',
     clientEmail: '',
+    dob: '',
     prakriti: 'Vata-Pitta',
     medicalNotes: '',
   });
@@ -189,21 +224,56 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
   const [filterCategory, setFilterCategory] = useState('ALL');
   const [step, setStep] = useState(1);
 
+  // AUTO-LOAD PATIENT PROFILE & CUSTOM EVENTS
   useEffect(() => {
     const fetchUserData = async () => {
       try {
+        const savedProfile = localStorage.getItem('ayursutra_patient_profile');
+        if (savedProfile) {
+          const profileData = JSON.parse(savedProfile);
+          setDetails(prev => ({ ...prev, ...profileData }));
+        }
+
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-          const { data } = await supabase.from('profiles').select('full_name, email').eq('id', session.user.id).single();
+          const { data } = await supabase.from('profiles').select('full_name, email, phone, dob').eq('id', session.user.id).single();
           if (data) {
-            setDetails(prev => ({ ...prev, clientName: data.full_name || 'Guest', clientEmail: data.email || session.user.email || '' }));
+            setDetails(prev => ({ 
+              ...prev, 
+              clientName: prev.clientName || data.full_name || 'Guest', 
+              clientEmail: prev.clientEmail || data.email || session.user.email || '',
+              clientPhone: prev.clientPhone || data.phone || '',
+              dob: prev.dob || data.dob || ''
+            }));
           }
         }
       } catch (e) {
-        console.warn('Auth fetch skipped in local mode', e);
+        console.warn('Auth fetch skipped in local mode');
       }
     };
+    
     fetchUserData();
+
+    const handleProfileUpdate = () => {
+      const savedProfile = localStorage.getItem('ayursutra_patient_profile');
+      if (savedProfile) setDetails(prev => ({ ...prev, ...JSON.parse(savedProfile) }));
+    };
+
+    const handleTriggerPayment = (e: any) => {
+      const bookingId = e.detail;
+      const b = ayurEngine.getBookings().find(x => x.id === bookingId);
+      if (b) {
+        setActiveTab('history');
+        handleInitiatePayment(b);
+      }
+    };
+    
+    window.addEventListener('profileUpdated', handleProfileUpdate);
+    window.addEventListener('triggerPayment', handleTriggerPayment);
+    return () => {
+      window.removeEventListener('profileUpdated', handleProfileUpdate);
+      window.removeEventListener('triggerPayment', handleTriggerPayment);
+    };
   }, []);
 
   useEffect(() => {
@@ -281,14 +351,22 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
   };
 
   const handleBookSession = async () => {
-    if (!details.clientName.trim()) {
-      alert("Please enter your full name in Step 4 before booking.");
+    if (!details.clientName.trim() || !details.clientPhone.trim() || !details.dob) {
+      alert("Please fill in your Full Name, Date of Birth, and Phone Number before booking.");
       return;
     }
     if (!targetStartTimeIso) return;
 
     setIsSubmitting(true);
     setRpcResponse(null);
+
+    localStorage.setItem('ayursutra_patient_profile', JSON.stringify({
+      clientName: details.clientName,
+      clientPhone: details.clientPhone,
+      clientEmail: details.clientEmail,
+      prakriti: details.prakriti,
+      dob: details.dob
+    }));
 
     let finalReportUrl = undefined;
     let finalFileName = undefined;
@@ -309,13 +387,11 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
           
           finalReportUrl = publicUrlData.publicUrl;
           finalFileName = selectedFile.name;
-        } else {
-          console.warn("Storage upload failed, continuing without file.", uploadError);
         }
-      } catch (e) {
-        console.warn("Storage exception, continuing without file.", e);
-      }
+      } catch (e) {}
     }
+
+    const calculatedAge = calculateAge(details.dob);
 
     try {
       const response = await ayurEngine.createPanchakarmaBookingRPC({
@@ -323,6 +399,7 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
         client_phone: details.clientPhone,
         client_email: details.clientEmail,
         prakriti: details.prakriti,
+        client_age: calculatedAge,
         therapy_id: selectedTherapyId,
         therapist_id: selectedTherapistId,
         room_id: allocatedRoomId,
@@ -342,7 +419,65 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
     } catch (err: any) {
       console.error("Booking Error:", err);
       setIsSubmitting(false);
-      alert("An unexpected error occurred while booking. Please try again.");
+      alert("An unexpected error occurred while booking.");
+    }
+  };
+
+  // --- RAZORPAY HANDLERS ---
+  const handleInitiatePayment = (booking: Booking) => {
+    setSelectedBookingForPayment(booking);
+    setPaymentModalOpen(true);
+  };
+
+  const processPaymentSuccess = async () => {
+    if (!selectedBookingForPayment) return;
+    try {
+      await supabase.from('bookings').update({ status: 'Completed', updated_at: new Date().toISOString() }).eq('id', selectedBookingForPayment.id);
+    } catch(e) {}
+    
+    // Refresh local engine state so UI catches the update
+    ayurEngine.addAuditLog('RPC_CALL', `Payment Received: ${selectedBookingForPayment.booking_ref}`, `Payment successful.`, 'success');
+    
+    // CLOSE PAYMENT MODAL & TRIGGER SUCCESS ANIMATION MODAL
+    setPaymentModalOpen(false);
+    setPaymentSuccess(true);
+  };
+
+  const executeRazorpayCheckout = async () => {
+    if (!selectedBookingForPayment) return;
+    
+    const res = await loadRazorpayScript();
+    if (!res) {
+      alert('Razorpay SDK failed to load. Please check your internet connection.');
+      return;
+    }
+
+    const razorpayKey = import.meta.env.VITE_RAZORPAY_KEY || 'rzp_test_MOCK_KEY_ID';
+
+    const options = {
+      key: razorpayKey,
+      amount: (selectedBookingForPayment.therapy?.price || 500) * 100,
+      currency: 'INR',
+      name: 'AyurSutra Wellness',
+      description: `Payment for ${selectedBookingForPayment.therapy?.name}`,
+      image: 'https://i.ibb.co/L5Q1D0w/ayursutra-logo.png',
+      handler: processPaymentSuccess,
+      prefill: {
+        name: details.clientName,
+        email: details.clientEmail,
+        contact: details.clientPhone
+      },
+      theme: {
+        color: '#2C5E43'
+      }
+    };
+
+    try {
+      const paymentObject = new (window as any).Razorpay(options);
+      paymentObject.open();
+    } catch(e) {
+      console.error("Razorpay Error:", e);
+      alert("Could not initialize Razorpay. Use the Simulate Payment option for demo purposes.");
     }
   };
 
@@ -357,13 +492,13 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
 
   const summaryRows = (
     <>
-      <SummaryRow label="Treatment" value={selectedTherapy?.name} strong />
+      <SummaryRow label="Selection" value={selectedTherapy?.name} strong />
       <SummaryRow label="Practitioner" value={selectedTherapist?.name} />
       <SummaryRow 
         label="Schedule" 
         value={step >= 3 && targetStartTimeIso ? `${new Date(targetStartTimeIso).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} · ${TIME_SLOTS.find((s) => s.hour === selectedHour)?.label}` : 'Not selected'} 
       />
-      <SummaryRow label="Duration" value={`${selectedTherapy?.duration_mins ?? 60} minutes`} />
+      <SummaryRow label="Duration" value={`${selectedTherapy?.duration_mins ?? 30} minutes`} />
     </>
   );
 
@@ -376,6 +511,111 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
   return (
     <div className="space-y-6 lg:space-y-8 relative">
       
+      {/* 🚀 TICK ANIMATION SUCCESS MODAL 🚀 */}
+      <AnimatePresence>
+        {paymentSuccess && (
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center relative overflow-hidden"
+            >
+              {/* Confetti background flair */}
+              <div aria-hidden className="absolute inset-0 opacity-40 pointer-events-none" style={{ background: 'radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.15), transparent 70%)' }} />
+              
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 250, damping: 15, delay: 0.1 }}
+                className="w-20 h-20 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mb-5 shadow-inner relative z-10"
+              >
+                <CheckCircle2 className="w-10 h-10" strokeWidth={2.5} />
+              </motion.div>
+              
+              <h2 className="text-2xl font-display font-bold text-forest-deep mb-2 relative z-10">Payment Successful!</h2>
+              <p className="text-sm text-slate-500 mb-6 font-medium leading-relaxed relative z-10">
+                Your booking for <span className="text-charcoal font-bold">{selectedBookingForPayment?.therapy?.name}</span> is now fully confirmed.
+              </p>
+              
+              <Button
+                size="lg"
+                className="w-full relative z-10"
+                onClick={() => {
+                  setPaymentSuccess(false);
+                  window.location.reload(); // Reloads securely AFTER the user acknowledges the tick
+                }}
+              >
+                Done
+              </Button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* DETAILED PAYMENT MODAL */}
+      <AnimatePresence>
+        {paymentModalOpen && selectedBookingForPayment && !paymentSuccess && (
+          <Modal open onClose={() => setPaymentModalOpen(false)} title="Secure Checkout" maxWidth="max-w-md">
+            <div className="space-y-6">
+              
+              <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="bg-slate-50 px-5 py-4 border-b border-slate-200 flex justify-between items-center">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">Booking Ref</p>
+                    <p className="text-sm font-mono font-semibold text-charcoal">{selectedBookingForPayment.booking_ref}</p>
+                  </div>
+                  <Badge tone="success">Approved</Badge>
+                </div>
+                
+                <div className="p-5 space-y-4">
+                  <div className="flex justify-between items-start">
+                    <span className="text-sm text-slate-500 font-medium">Therapy</span>
+                    <span className="text-sm font-semibold text-forest-deep text-right max-w-[60%]">{selectedBookingForPayment.therapy?.name}</span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-sm text-slate-500 font-medium">Practitioner</span>
+                    <span className="text-sm font-semibold text-charcoal text-right">{selectedBookingForPayment.therapist?.name}</span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-sm text-slate-500 font-medium">Schedule</span>
+                    <span className="text-sm font-semibold text-charcoal text-right">
+                      {new Date(selectedBookingForPayment.start_time).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} at {new Date(selectedBookingForPayment.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <span className="text-sm text-slate-500 font-medium">Duration</span>
+                    <span className="text-sm font-semibold text-charcoal text-right">{selectedBookingForPayment.therapy?.duration_mins} mins</span>
+                  </div>
+
+                  <div className="pt-4 mt-4 border-t border-dashed border-slate-200">
+                    <div className="flex justify-between items-center">
+                      <span className="text-base font-semibold text-slate-700">Total Payable</span>
+                      <span className="text-2xl font-display font-bold text-forest-deep">₹{selectedBookingForPayment.therapy?.price}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Button size="lg" className="w-full shadow-md hover:shadow-lg transition-all" icon={<CreditCard className="w-4 h-4" />} onClick={executeRazorpayCheckout}>
+                  Proceed to Pay ₹{selectedBookingForPayment.therapy?.price}
+                </Button>
+                
+                {/* HACKATHON PROTOTYPE BYPASS BUTTON */}
+                <button 
+                  onClick={processPaymentSuccess}
+                  className="w-full text-center py-2 text-xs font-semibold text-slate-400 hover:text-forest transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" /> Simulate Payment (Prototype Demo Bypass)
+                </button>
+              </div>
+
+            </div>
+          </Modal>
+        )}
+      </AnimatePresence>
+
       {/* RICH THERAPY INFO MODAL */}
       <AnimatePresence>
         {infoModalTherapy && (
@@ -403,7 +643,7 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
               <div className="overflow-y-auto p-6 sm:px-8 space-y-6 pb-24">
                 <div>
                   <h4 className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-1.5">
-                    <Info className="w-3.5 h-3.5" /> Treatment Details
+                    <Info className="w-3.5 h-3.5" /> Details
                   </h4>
                   <p className="text-sm text-charcoal leading-relaxed">{richInfo?.treatmentDetails || infoModalTherapy.description}</p>
                 </div>
@@ -454,10 +694,11 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
                   </div>
                 )}
 
-                {infoModalTherapy.oil_type && (
+                {/* Hide oil box if 0 requirement */}
+                {infoModalTherapy.oil_type && infoModalTherapy.oil_required_ml > 0 && infoModalTherapy.oil_type !== 'None' && (
                   <div className="bg-orange-50/50 border border-orange-100/60 rounded-2xl p-5">
                     <span className="block text-[11px] text-orange-800/60 font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                      <Leaf className="w-3.5 h-3.5" /> Medicated Oil Requirement
+                      <Leaf className="w-3.5 h-3.5" /> Medicated Formulation Requirement
                     </span>
                     <span className="font-semibold text-orange-900 text-sm mt-1 block">
                       {infoModalTherapy.oil_type} ({infoModalTherapy.oil_required_ml}mL)
@@ -467,8 +708,8 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
               </div>
 
               <div className="absolute bottom-0 left-0 right-0 p-6 sm:px-8 bg-white/95 backdrop-blur-xl border-t border-slate-100 flex justify-end">
-                <Button onClick={() => { setSelectedTherapyId(infoModalTherapist?.id || infoModalTherapy.id); setInfoModalTherapy(null); }}>
-                  Select this therapy
+                <Button onClick={() => { setSelectedTherapyId(infoModalTherapy.id); setInfoModalTherapy(null); }}>
+                  Select this service
                 </Button>
               </div>
             </motion.div>
@@ -602,25 +843,39 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
                <Button onClick={() => setActiveTab('book')} className="mt-4">Book your first session</Button>
              </Card>
            ) : (
-             myBookings.map((b) => (
-               <Card key={b.id} className="p-5 sm:p-6 bg-white/60 backdrop-blur-xl hover:-translate-y-1 hover:shadow-xl transition-all duration-300">
-                 <div className="flex flex-col sm:flex-row justify-between gap-4">
-                   <div>
-                     <div className="flex items-center gap-3 mb-2">
-                       <h3 className="font-display font-semibold text-lg text-forest-deep">{b.therapy?.name}</h3>
-                       <Badge tone={b.status === 'Confirmed' ? 'success' : b.status === 'Completed' ? 'neutral' : 'brand'}>{b.status}</Badge>
+             myBookings.map((b) => {
+               // Silencing rejected ones from here since they are handled in the Bell Notification
+               if (b.status === 'Rejected') return null;
+
+               return (
+                 <Card key={b.id} className="p-5 sm:p-6 bg-white/60 backdrop-blur-xl hover:-translate-y-1 hover:shadow-xl transition-all duration-300">
+                   <div className="flex flex-col sm:flex-row justify-between gap-4">
+                     <div>
+                       <div className="flex items-center gap-3 mb-2">
+                         <h3 className="font-display font-semibold text-lg text-forest-deep">{b.therapy?.name}</h3>
+                         <Badge tone={b.status === 'Confirmed' ? 'success' : b.status === 'Completed' ? 'neutral' : 'brand'}>{b.status}</Badge>
+                       </div>
+                       <p className="text-sm text-charcoal font-medium">
+                         {new Date(b.start_time).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })} at {new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                       </p>
                      </div>
-                     <p className="text-sm text-charcoal font-medium">
-                       {new Date(b.start_time).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })} at {new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                     </p>
+                     <div className="flex flex-col items-start sm:items-end justify-between gap-3">
+                       <div className="text-left sm:text-right">
+                         <p className="text-sm font-medium text-forest-deep">{b.therapist?.name}</p>
+                         <p className="text-xs text-muted mt-1">Ref: {b.booking_ref}</p>
+                       </div>
+                       
+                       {/* Razorpay Pay Now Button directly accessible from history if Confirmed */}
+                       {b.status === 'Confirmed' && (
+                         <Button size="sm" onClick={() => handleInitiatePayment(b)} icon={<CreditCard className="w-3.5 h-3.5" />}>
+                           Pay ₹{b.therapy?.price} Now
+                         </Button>
+                       )}
+                     </div>
                    </div>
-                   <div className="text-left sm:text-right">
-                     <p className="text-sm font-medium text-forest-deep">{b.therapist?.name}</p>
-                     <p className="text-xs text-muted mt-1">Ref: {b.booking_ref}</p>
-                   </div>
-                 </div>
-               </Card>
-             ))
+                 </Card>
+               );
+             })
            )}
         </motion.div>
       ) : (
@@ -639,11 +894,11 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
                     <Card className="p-5 sm:p-6 space-y-5 bg-white/60 backdrop-blur-xl shadow-lg border-white/40">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
-                          <h2 className="font-display text-lg font-semibold text-forest-deep">Select your therapy</h2>
-                          <p className="text-xs text-muted mt-0.5">Classical Panchakarma protocols tailored to your constitution.</p>
+                          <h2 className="font-display text-lg font-semibold text-forest-deep">Select your service</h2>
+                          <p className="text-xs text-muted mt-0.5">Classical Panchakarma protocols & Consultations tailored to your constitution.</p>
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          {['ALL', 'Purvakarma', 'Pradhanakarma'].map(cat => (
+                          {['ALL', 'Consultation', 'Purvakarma', 'Pradhanakarma'].map(cat => (
                              <FilterChip key={cat} active={filterCategory === cat} onClick={() => setFilterCategory(cat)}>{cat}</FilterChip>
                           ))}
                         </div>
@@ -765,23 +1020,35 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
                             <Field label="Full name" htmlFor="c-name" required>
                               <Input id="c-name" value={details.clientName} onChange={(e) => setDetails({ ...details, clientName: e.target.value })} placeholder="e.g. Siddharth Varma" className="bg-white/50 backdrop-blur-md" />
                             </Field>
-                            <Field label="Phone number" htmlFor="c-phone">
+                            <Field label="Date of Birth" htmlFor="c-dob" required>
+                              <input
+                                id="c-dob"
+                                type="date"
+                                max={new Date().toISOString().split('T')[0]}
+                                value={details.dob}
+                                onChange={(e) => setDetails({ ...details, dob: e.target.value })}
+                                className="w-full h-12 rounded-xl border border-line bg-white/50 backdrop-blur-md px-4 text-sm text-charcoal focus:outline-none focus:border-sage focus:ring-3 focus:ring-sage/15 cursor-pointer shadow-sm transition-all hover:bg-white"
+                              />
+                            </Field>
+                            <Field label="Phone number" htmlFor="c-phone" required>
                               <Input id="c-phone" type="tel" value={details.clientPhone} onChange={(e) => setDetails({ ...details, clientPhone: e.target.value })} placeholder="+91 98XXX XXXXX" className="bg-white/50 backdrop-blur-md" />
                             </Field>
                             <Field label="Email address" htmlFor="c-email">
                               <Input id="c-email" type="email" value={details.clientEmail} onChange={(e) => setDetails({ ...details, clientEmail: e.target.value })} placeholder="you@example.com" className="bg-white/50 backdrop-blur-md" />
                             </Field>
-                            <Field label="Prakriti (dosha constitution)" htmlFor="c-prakriti">
-                              <Select id="c-prakriti" value={details.prakriti} onChange={(e) => setDetails({ ...details, prakriti: e.target.value })} className="bg-white/50 backdrop-blur-md">
-                                <option>Vata-Pitta</option>
-                                <option>Pitta-Kapha</option>
-                                <option>Vata-Kapha</option>
-                                <option>Tridoshic</option>
-                                <option>Pure Vata</option>
-                                <option>Pure Pitta</option>
-                                <option>I don't know my prakriti</option>
-                              </Select>
-                            </Field>
+                            <div className="sm:col-span-2">
+                              <Field label="Prakriti (dosha constitution)" htmlFor="c-prakriti">
+                                <Select id="c-prakriti" value={details.prakriti} onChange={(e) => setDetails({ ...details, prakriti: e.target.value })} className="bg-white/50 backdrop-blur-md">
+                                  <option>Vata-Pitta</option>
+                                  <option>Pitta-Kapha</option>
+                                  <option>Vata-Kapha</option>
+                                  <option>Tridoshic</option>
+                                  <option>Pure Vata</option>
+                                  <option>Pure Pitta</option>
+                                  <option>I don't know my prakriti</option>
+                                </Select>
+                              </Field>
+                            </div>
                           </div>
                         </fieldset>
                         <fieldset className="space-y-2">
@@ -819,7 +1086,7 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
                           <div>
                             <h4 className="text-sm font-bold text-red-800">Booking Unsuccessful</h4>
                             <p className="text-xs font-medium text-red-700/90 mt-0.5 leading-relaxed">
-                              {(rpcResponse as any).message || 'The selected time slot is unavailable, or there are insufficient resources to fulfill this request. Please choose another time.'}
+                              {(rpcResponse as any).message || (rpcResponse as any).error || 'The selected time slot is unavailable, or there are insufficient resources to fulfill this request. Please choose another time.'}
                             </p>
                           </div>
                         </motion.div>
@@ -908,11 +1175,11 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
                     <span className="font-mono text-sm font-bold text-forest-deep">{rpcResponse.booking_ref}</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-                    <SummaryRow label="Treatment" value={rpcResponse.details?.therapy_name || selectedTherapy?.name} strong />
+                    <SummaryRow label="Selection" value={rpcResponse.details?.therapy_name || selectedTherapy?.name} strong />
                     <SummaryRow label="Practitioner" value={rpcResponse.details?.therapist_name || selectedTherapist?.name} />
                     <SummaryRow label="Chamber" value={rpcResponse.details?.room_name || 'Assigned at check-in'} />
                     <SummaryRow label="Schedule" value={rpcResponse.details ? `${new Date(rpcResponse.details.start_time).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} · ${new Date(rpcResponse.details.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''} />
-                    <SummaryRow label="Medicated oil" value={`${rpcResponse.details?.oil_required_ml ?? selectedTherapy?.oil_required_ml} mL ${rpcResponse.details?.oil_type ?? selectedTherapy?.oil_type ?? ''}`} />
+                    <SummaryRow label="Medicated Formulation" value={`${rpcResponse.details?.oil_required_ml ?? selectedTherapy?.oil_required_ml} mL ${rpcResponse.details?.oil_type ?? selectedTherapy?.oil_type ?? ''}`} />
                     <SummaryRow label="Duration" value={`${selectedTherapy?.duration_mins} minutes`} />
                   </div>
                   <div className="pt-4 flex flex-col sm:flex-row gap-3 justify-end border-t border-line mt-2">

@@ -1,31 +1,25 @@
-export type PanchakarmaCategory = 
-  | 'Purvakarma' 
-  | 'Pradhanakarma' 
-  | 'Paschatkarma' 
-  | 'Rasayana';
-
-export type DoshaType = 'Vata' | 'Pitta' | 'Kapha' | 'Tridoshic' | 'Vata-Pitta' | 'Pitta-Kapha' | 'Vata-Kapha';
+export type PanchakarmaCategory = 'Purvakarma' | 'Pradhanakarma' | 'Paschatkarma' | 'Consultation' | string;
 
 export interface Therapy {
   id: string;
   name: string;
   sanskrit_name: string;
   category: PanchakarmaCategory;
+  description: string;
   duration_mins: number;
+  price: number;
   oil_required_ml: number;
   oil_type: string;
-  price: number;
-  dosha_target: string;
-  description: string;
-  benefits: string[];
-  contraindications: string[];
-  icon_name: string;
+  dosha_target?: string;
+  benefits?: string[];
+  contraindications?: string[];
+  icon_name?: string;
 }
 
 export interface InventoryItem {
   id: string;
   item_name: string;
-  category: 'Medicated Oil' | 'Herbal Decoction' | 'Herbal Churna' | 'Ghee & Butter' | 'Linen & Accessories';
+  category: string;
   stock_ml: number;
   min_threshold_ml: number;
   unit: string;
@@ -38,28 +32,26 @@ export interface ResourceRoom {
   id: string;
   room_name: string;
   room_code: string;
-  room_type: string;
+  room_type?: string;
   droni_wood: string;
   droni_length_ft: number;
   is_operational: boolean;
-  maintenance_status: 'Operational' | 'Sanitizing' | 'Maintenance' | 'Inspection';
+  maintenance_status: string;
   features: string[];
 }
 
 export interface Therapist {
   id: string;
   name: string;
-  title: string; // e.g. 'Senior Panchakarma Vaidya', 'Certified Ayurvedic Therapist'
+  title: string;
   specialization: string;
-  gender: 'Male' | 'Female';
   experience_years: number;
-  status: 'Available' | 'In Session' | 'On Leave';
+  gender?: string;
+  status: string;
   avatar_url: string;
   rating: number;
   completed_sessions: number;
 }
-
-export type BookingStatus = 'Pending' | 'Confirmed' | 'In Progress' | 'Completed' | 'Cancelled' | 'Rejected';
 
 export interface Booking {
   id: string;
@@ -68,14 +60,14 @@ export interface Booking {
   client_phone: string;
   client_email: string;
   client_age?: number;
-  client_gender?: 'Male' | 'Female' | 'Other';
-  prakriti?: string;
+  client_gender?: string;
+  prakriti: string;
   therapy_id: string;
   therapist_id: string;
   room_id: string;
-  start_time: string; // ISO string
-  end_time: string; // ISO string
-  status: BookingStatus;
+  start_time: string;
+  end_time: string;
+  status: 'Pending' | 'Confirmed' | 'In Progress' | 'Completed' | 'Rejected' | 'Cancelled' | 'Denied' | string;
   report_url?: string;
   report_file_name?: string;
   medical_notes?: string;
@@ -83,7 +75,6 @@ export interface Booking {
   rejection_reason?: string;
   created_at: string;
   updated_at: string;
-  // Joined relation fields for convenience
   therapy?: Therapy;
   therapist?: Therapist;
   room?: ResourceRoom;
@@ -92,14 +83,14 @@ export interface Booking {
 export interface ConstraintValidationResult {
   can_book: boolean;
   therapist_available: boolean;
-  therapist_conflict_reason?: string;
   room_available: boolean;
-  room_conflict_reason?: string;
   inventory_sufficient: boolean;
-  inventory_conflict_reason?: string;
   required_oil_ml: number;
   current_stock_ml: number;
   oil_name: string;
+  therapist_conflict_reason?: string;
+  room_conflict_reason?: string;
+  inventory_conflict_reason?: string;
   conflicting_booking?: Booking;
 }
 
@@ -108,6 +99,7 @@ export interface BookingCreationRPCResponse {
   booking_id?: string;
   booking_ref?: string;
   message: string;
+  error_code?: string;
   details?: {
     client_name: string;
     therapy_name: string;
@@ -118,16 +110,14 @@ export interface BookingCreationRPCResponse {
     oil_required_ml: number;
     oil_type: string;
   };
-  error_code?: 'THERAPIST_CONFLICT' | 'ROOM_CONFLICT' | 'INVENTORY_SHORTAGE' | 'ROOM_OFFLINE' | 'THERAPIST_OFFLINE' | 'INVALID_TIME' | 'TRANSACTION_ERROR';
-  error_message?: string;
 }
 
 export interface RealtimeAuditLog {
   id: string;
   timestamp: string;
-  event_type: 'RPC_CALL' | 'BOOKING_CREATED' | 'BOOKING_APPROVED' | 'INVENTORY_DEDUCTED' | 'BOOKING_REJECTED' | 'RESTOCK' | 'CONSTRAINT_BLOCKED';
+  event_type: string;
   title: string;
   details: string;
-  severity: 'info' | 'success' | 'warning' | 'error';
+  severity: 'info' | 'success' | 'warning' | 'error' | string;
   payload?: any;
 }
