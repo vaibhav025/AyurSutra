@@ -359,7 +359,7 @@ export const INITIAL_THERAPISTS: Therapist[] = [
     gender: 'Female',
     experience_years: 14,
     status: 'Available',
-    avatar_url: 'https://images.unsplash.com/photo-1594824813689-f53831ea2315?auto=format&fit=crop&q=80&w=250',
+    avatar_url: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=250',
     rating: 4.95,
     completed_sessions: 1420,
   },

@@ -203,7 +203,7 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
 
   // PAYMENT MODAL STATE
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false); // NEW STATE FOR TICK MODAL
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [selectedBookingForPayment, setSelectedBookingForPayment] = useState<Booking | null>(null);
 
   const [details, setDetails] = useState({
@@ -326,7 +326,7 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
 
     const isBooked = allBookings.some((b) => {
       if (b.therapist_id !== selectedTherapist?.id) return false;
-      if (!['Pending', 'Confirmed', 'In Progress'].includes(b.status)) return false;
+      if (!['Pending', 'Confirmed', 'Scheduled', 'In Progress'].includes(b.status)) return false;
       
       const bTime = new Date(b.start_time);
       return bTime.getTime() === slotTime.getTime();
@@ -429,14 +429,16 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
     setPaymentModalOpen(true);
   };
 
+  // The fallback method if Razorpay fails or key is missing
   const processPaymentSuccess = async () => {
     if (!selectedBookingForPayment) return;
     try {
-      await supabase.from('bookings').update({ status: 'Completed', updated_at: new Date().toISOString() }).eq('id', selectedBookingForPayment.id);
+      // UPDATE STATUS TO 'Scheduled' INSTEAD OF 'Completed'
+      await supabase.from('bookings').update({ status: 'Scheduled', updated_at: new Date().toISOString() }).eq('id', selectedBookingForPayment.id);
     } catch(e) {}
     
     // Refresh local engine state so UI catches the update
-    ayurEngine.addAuditLog('RPC_CALL', `Payment Received: ${selectedBookingForPayment.booking_ref}`, `Payment successful.`, 'success');
+    ayurEngine.addAuditLog('RPC_CALL', `Payment Received: ${selectedBookingForPayment.booking_ref}`, `Payment successful. Session scheduled.`, 'success');
     
     // CLOSE PAYMENT MODAL & TRIGGER SUCCESS ANIMATION MODAL
     setPaymentModalOpen(false);
@@ -535,7 +537,7 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
               
               <h2 className="text-2xl font-display font-bold text-forest-deep mb-2 relative z-10">Payment Successful!</h2>
               <p className="text-sm text-slate-500 mb-6 font-medium leading-relaxed relative z-10">
-                Your booking for <span className="text-charcoal font-bold">{selectedBookingForPayment?.therapy?.name}</span> is now fully confirmed.
+                Your booking for <span className="text-charcoal font-bold">{selectedBookingForPayment?.therapy?.name}</span> is now fully scheduled.
               </p>
               
               <Button
@@ -543,7 +545,7 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
                 className="w-full relative z-10"
                 onClick={() => {
                   setPaymentSuccess(false);
-                  window.location.reload(); // Reloads securely AFTER the user acknowledges the tick
+                  window.location.reload(); 
                 }}
               >
                 Done
@@ -694,7 +696,6 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
                   </div>
                 )}
 
-                {/* Hide oil box if 0 requirement */}
                 {infoModalTherapy.oil_type && infoModalTherapy.oil_required_ml > 0 && infoModalTherapy.oil_type !== 'None' && (
                   <div className="bg-orange-50/50 border border-orange-100/60 rounded-2xl p-5">
                     <span className="block text-[11px] text-orange-800/60 font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5">
@@ -844,7 +845,6 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
              </Card>
            ) : (
              myBookings.map((b) => {
-               // Silencing rejected ones from here since they are handled in the Bell Notification
                if (b.status === 'Rejected') return null;
 
                return (
@@ -853,7 +853,7 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
                      <div>
                        <div className="flex items-center gap-3 mb-2">
                          <h3 className="font-display font-semibold text-lg text-forest-deep">{b.therapy?.name}</h3>
-                         <Badge tone={b.status === 'Confirmed' ? 'success' : b.status === 'Completed' ? 'neutral' : 'brand'}>{b.status}</Badge>
+                         <Badge tone={b.status === 'Scheduled' ? 'success' : b.status === 'Completed' ? 'neutral' : 'brand'}>{b.status}</Badge>
                        </div>
                        <p className="text-sm text-charcoal font-medium">
                          {new Date(b.start_time).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })} at {new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -865,7 +865,7 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
                          <p className="text-xs text-muted mt-1">Ref: {b.booking_ref}</p>
                        </div>
                        
-                       {/* Razorpay Pay Now Button directly accessible from history if Confirmed */}
+                       {/* Razorpay Pay Now Button */}
                        {b.status === 'Confirmed' && (
                          <Button size="sm" onClick={() => handleInitiatePayment(b)} icon={<CreditCard className="w-3.5 h-3.5" />}>
                            Pay ₹{b.therapy?.price} Now
@@ -1075,7 +1075,6 @@ export const ClientBookingPortal: React.FC<ClientBookingPortalProps> = ({
                         />
                       </Card>
 
-                      {/* --- ERROR MESSAGE UI DISPLAY --- */}
                       {rpcResponse && !rpcResponse.success && (
                         <motion.div 
                           initial={{ opacity: 0, y: -10 }} 

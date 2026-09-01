@@ -6,6 +6,7 @@ import {
   Cpu,
   Database,
   Calendar,
+  CalendarDays,
   UserCheck,
   LogOut,
   Bell,
@@ -20,7 +21,8 @@ import { ayurEngine } from '../services/engine';
 import { Modal, Button } from './ui';
 import type { Booking } from '../types/ayursutra';
 
-export type ActiveTab = 'client' | 'receptionist' | 'therapist' | 'simulator' | 'sql';
+// ADDED 'calendar' TO ACTIVE TAB
+export type ActiveTab = 'client' | 'receptionist' | 'therapist' | 'calendar' | 'simulator' | 'sql';
 
 export interface NavItem {
   id: ActiveTab;
@@ -36,7 +38,11 @@ export function navForRole(role: string | null): NavItem[] {
       { id: 'sql', label: 'SQL & RPC Hub', icon: <Database className="w-[18px] h-[18px]" /> },
     ];
   if (role === 'therapist')
-    return [{ id: 'therapist', label: 'My Schedule', icon: <UserCheck className="w-[18px] h-[18px]" /> }];
+    return [
+      { id: 'therapist', label: 'My Schedule', icon: <UserCheck className="w-[18px] h-[18px]" /> },
+      // NEW CALENDAR BUTTON FOR VAIDYA
+      { id: 'calendar', label: 'Schedule Calendar', icon: <CalendarDays className="w-[18px] h-[18px]" /> }
+    ];
   return [{ id: 'client', label: 'Book Treatment', icon: <Calendar className="w-[18px] h-[18px]" /> }];
 }
 
@@ -179,7 +185,6 @@ export const SidebarContent: React.FC<{
         <ProfileSettingsModal onClose={() => setIsProfileModalOpen(false)} />
       )}
 
-      {/* NOTIFICATIONS MODAL PORTAL - Safely escapes the sidebar z-index */}
       {typeof document !== 'undefined' && createPortal(
         <div className="relative z-[99999]">
           <AnimatePresence>

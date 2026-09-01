@@ -8,6 +8,7 @@ import { ReceptionistDashboard } from './components/ReceptionistDashboard';
 import { TherapistScheduleView } from './components/TherapistScheduleView';
 import { ConstraintSimulator } from './components/ConstraintSimulator';
 import { SqlSchemaViewer } from './components/SqlSchemaViewer';
+import { TherapistCalendarView } from './components/TherapistCalendarView';
 import { ayurEngine } from './services/engine';
 import { supabase } from './lib/supabaseClient';
 
@@ -127,6 +128,10 @@ export default function App() {
       )}
       {activeTab === 'therapist' && userRole === 'therapist' && (
         <TherapistScheduleView />
+      )}
+      {/* ADDED CALENDAR ROUTING PROPERLY */}
+      {activeTab === 'calendar' && userRole === 'therapist' && (
+        <TherapistCalendarView />
       )}
       {activeTab === 'simulator' && userRole === 'receptionist' && (
         <ConstraintSimulator />

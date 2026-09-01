@@ -1,297 +1,443 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import {
-  CalendarDays,
-  Clock,
-  FileText,
-  CheckCircle2,
-  Play,
-  Star,
-  MapPin,
-  Droplets,
-  ChevronDown,
+import React, { useState, useMemo, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Clock, MapPin, Activity, FileText, CheckCircle2, 
+  Play, Lock, Timer, X, Sparkles, User, Award, Star, Calendar as CalendarIcon,
+  AlertCircle, Leaf, RotateCcw
 } from 'lucide-react';
 import { ayurEngine } from '../services/engine';
+import { supabase } from '../lib/supabaseClient';
 import type { Booking, Therapist } from '../types/ayursutra';
-import { MedicalReportModal } from './MedicalReportModal';
-import {
-  PageHeader,
-  Card,
-  Button,
-  Badge,
-  StatusBadge,
-  EmptyState,
-  Avatar,
-} from './ui';
+import { Button, Badge, Modal, Input } from './ui';
 
 export const TherapistScheduleView: React.FC = () => {
-  const [therapists, setTherapists] = useState<Therapist[]>(() => ayurEngine.getTherapists());
-  const [selectedTherapistId, setSelectedTherapistId] = useState<string>(
-    () => therapists[1]?.id || 'tp-2'
-  );
   const [bookings, setBookings] = useState<Booking[]>(() => ayurEngine.getBookings());
-  const [selectedReportBooking, setSelectedReportBooking] = useState<Booking | null>(null);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [therapists] = useState<Therapist[]>(() => ayurEngine.getTherapists());
+  const [selectedTherapistId, setSelectedTherapistId] = useState<string>('tp-1'); 
+  
+  const [activeTimers, setActiveTimers] = useState<Record<string, number>>({});
+  const [sessionCompletedModal, setSessionCompletedModal] = useState<Booking | null>(null);
+  const [commenceConfirmModal, setCommenceConfirmModal] = useState<Booking | null>(null);
+  const [commenceInput, setCommenceInput] = useState('');
 
   useEffect(() => {
     return ayurEngine.subscribe(() => {
-      setTherapists(ayurEngine.getTherapists());
       setBookings(ayurEngine.getBookings());
     });
   }, []);
 
-  const currentTherapist =
-    therapists.find((th) => th.id === selectedTherapistId) || therapists[0];
+  const selectedTherapist = therapists.find(t => t.id === selectedTherapistId);
+  
+  const myBookings = useMemo(() => {
+    return bookings.filter(b => 
+      b.therapist_id === selectedTherapistId && 
+      b.status !== 'Rejected' && 
+      b.status !== 'Cancelled'
+    );
+  }, [bookings, selectedTherapistId]);
+  
+  const upcomingCount = myBookings.filter(b => ['Pending', 'Confirmed', 'Scheduled'].includes(b.status)).length;
 
-  const therapistBookings = bookings
-    .filter(
-      (b) =>
-        b.therapist_id === selectedTherapistId &&
-        ['Confirmed', 'Pending'].includes(b.status)
-    )
-    .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
-
-  // FIX: Grouping by Actual Date String
-  const groupedBookings = therapistBookings.reduce((acc, booking) => {
-    const dateKey = new Date(booking.start_time).toLocaleDateString([], { 
-      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' 
+  const groupedBookings = useMemo(() => {
+    const groups: Record<string, Booking[]> = {};
+    myBookings.forEach(b => {
+      const dateObj = new Date(b.start_time);
+      dateObj.setHours(0, 0, 0, 0);
+      const key = dateObj.toISOString();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(b);
     });
-    if (!acc[dateKey]) acc[dateKey] = [];
-    acc[dateKey].push(booking);
-    return acc;
-  }, {} as Record<string, Booking[]>);
+    
+    const sortedKeys = Object.keys(groups).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    return sortedKeys.map(k => ({
+      dateStr: k,
+      sessions: groups[k].sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
+    }));
+  }, [myBookings]);
 
-  const handleStartSession = (bookingId: string) => {
-    setActiveSessionId(bookingId);
-    ayurEngine.addAuditLog(
-      'RPC_CALL',
-      `Session Commenced by ${currentTherapist.name}`,
-      'Patient session in progress. Warm medicated oil stream initiated.',
-      'info'
-    );
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveTimers(prev => {
+        const next = { ...prev };
+        let hasChanges = false;
+        
+        Object.keys(next).forEach(id => {
+          if (next[id] > 0) {
+            next[id] -= 1;
+            hasChanges = true;
+          }
+        });
+        
+        return hasChanges ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    Object.entries(activeTimers).forEach(([id, timeLeft]) => {
+      if (timeLeft === 0) {
+        setActiveTimers(prev => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        const booking = myBookings.find(b => b.id === id);
+        if (booking) handleCompleteSession(booking);
+      }
+    });
+  }, [activeTimers, myBookings]);
+
+  const formatTime = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const s = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
   };
 
-  const handleCompleteSession = (bookingId: string) => {
-    setActiveSessionId(null);
-    ayurEngine.addAuditLog(
-      'RPC_CALL',
-      `Session Completed by ${currentTherapist.name}`,
-      'Panchakarma session successfully completed and recorded.',
-      'success'
-    );
+  const executeCommenceSession = async () => {
+    if (!commenceConfirmModal) return;
+    const booking = commenceConfirmModal;
+    
+    try {
+      await supabase.from('bookings').update({ status: 'In Progress', updated_at: new Date().toISOString() }).eq('id', booking.id);
+      
+      const durationSecs = (booking.therapy?.duration_mins || 60) * 60;
+      setActiveTimers(prev => ({ ...prev, [booking.id]: durationSecs }));
+      
+      const updatedBookings = bookings.map(b => b.id === booking.id ? { ...b, status: 'In Progress' } : b);
+      setBookings(updatedBookings);
+      ayurEngine.addAuditLog('RPC_CALL', `Session Commenced`, `${booking.therapy?.name} started for ${booking.client_name}`, 'info');
+      
+      setCommenceConfirmModal(null);
+      setCommenceInput('');
+    } catch (e) {
+      console.error("Failed to start session", e);
+    }
   };
 
-  const hourNow = new Date().getHours();
+  const handleCompleteSession = async (booking: Booking) => {
+    try {
+      await supabase.from('bookings').update({ status: 'Completed', updated_at: new Date().toISOString() }).eq('id', booking.id);
+      
+      setActiveTimers(prev => {
+        const next = { ...prev };
+        delete next[booking.id];
+        return next;
+      });
+      
+      const updatedBookings = bookings.map(b => b.id === booking.id ? { ...b, status: 'Completed' } : b);
+      setBookings(updatedBookings);
+      
+      setSessionCompletedModal(booking);
+      ayurEngine.addAuditLog('RPC_CALL', `Session Completed`, `${booking.therapy?.name} completed successfully.`, 'success');
+    } catch (e) {
+      console.error("Failed to complete session", e);
+    }
+  };
+
+  const handleRevertSession = async (booking: Booking) => {
+    try {
+      // SETTING TO 'Scheduled' BREAKS THE PAYMENT LOOP FOR PATIENTS!
+      await supabase.from('bookings').update({ status: 'Scheduled', updated_at: new Date().toISOString() }).eq('id', booking.id);
+      const updatedBookings = bookings.map(b => b.id === booking.id ? { ...b, status: 'Scheduled' } : b);
+      setBookings(updatedBookings);
+      ayurEngine.addAuditLog('RPC_CALL', `Session Reverted`, `Therapist undid completion for ${booking.client_name}.`, 'warning');
+    } catch (e) {
+      console.error("Failed to revert session", e);
+    }
+  };
 
   return (
-    <div className="space-y-6 lg:space-y-8">
-      <PageHeader
-        eyebrow="Practitioner Command Center"
-        title="My schedule"
-        description="Comprehensive treatment timeline with chamber assignments and pre-treatment notes."
-      />
+    <div className="max-w-5xl mx-auto space-y-6 lg:space-y-8 relative pb-20">
+      
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <h1 className="text-2xl font-display font-bold text-forest-deep">My Schedule</h1>
+        <Badge tone="brand" className="self-start sm:self-auto bg-red-500 text-white border-none shadow-sm shadow-red-500/20">Live Sync</Badge>
+      </div>
 
-      {/* Practitioner header card - Glassmorphism applied */}
-      <Card className="p-5 sm:p-6 bg-forest-deep/95 backdrop-blur-xl border border-white/10 shadow-[0_10px_40px_rgb(0,0,0,0.15)] hover:-translate-y-1 transition-transform duration-500">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
-          <div className="flex items-center gap-4 min-w-0">
-            <Avatar src={currentTherapist?.avatar_url} name={currentTherapist?.name ?? ''} size={56} ring />
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="font-display text-xl font-semibold text-white truncate">
-                  {currentTherapist?.name}
-                </h2>
-                <span className="inline-flex px-2 py-0.5 rounded-full bg-white/10 border border-white/15 text-[10px] font-bold uppercase tracking-wider text-sage backdrop-blur-sm shadow-sm">
-                  {currentTherapist?.status}
-                </span>
+      {selectedTherapist && (
+        <div className="bg-forest-deep rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl">
+          <div aria-hidden className="absolute inset-0 opacity-20 pointer-events-none" style={{ background: 'radial-gradient(circle at 100% 0%, rgba(255,255,255,0.4), transparent 50%)' }} />
+          
+          <div className="relative z-10 flex flex-col lg:flex-row gap-6 justify-between items-start lg:items-center mb-8">
+            <div className="flex items-center gap-5">
+              <img src={selectedTherapist.avatar_url} alt={selectedTherapist.name} className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-white/20 object-cover shadow-lg bg-forest" />
+              <div>
+                <div className="flex items-center gap-3 mb-1">
+                  <h2 className="text-xl sm:text-2xl font-display font-bold">{selectedTherapist.name}</h2>
+                  <Badge tone="success" className="bg-emerald-500/20 text-emerald-300 border-none uppercase tracking-widest text-[9px]">{selectedTherapist.status}</Badge>
+                </div>
+                <p className="text-sm text-sage-soft max-w-md leading-relaxed opacity-90">{selectedTherapist.title} · {selectedTherapist.specialization}</p>
               </div>
-              <p className="mt-0.5 text-xs text-white/60 truncate">
-                {currentTherapist?.title} · {currentTherapist?.specialization}
-              </p>
+            </div>
+
+            <div className="w-full lg:w-auto shrink-0 bg-white/10 p-3 rounded-2xl backdrop-blur-md border border-white/10">
+              <p className="text-[10px] text-white/60 uppercase tracking-widest font-bold mb-1.5 px-1">Switch practitioner view</p>
+              <select 
+                value={selectedTherapistId}
+                onChange={(e) => setSelectedTherapistId(e.target.value)}
+                className="w-full bg-forest text-white border-none rounded-xl px-4 py-2.5 text-sm font-semibold outline-none cursor-pointer hover:bg-forest/80 transition-colors"
+              >
+                {therapists.map(t => (
+                  <option key={t.id} value={t.id}>{t.name} - {t.status}</option>
+                ))}
+              </select>
             </div>
           </div>
 
-          <div className="w-full sm:w-auto">
-            <label htmlFor="therapist-switch" className="block text-[11px] font-medium text-sage mb-1.5">
-              Switch practitioner view
-            </label>
-            <div className="relative">
-              <select
-                id="therapist-switch"
-                value={selectedTherapistId}
-                onChange={(e) => setSelectedTherapistId(e.target.value)}
-                className="w-full sm:w-64 h-11 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 pl-3 pr-10 text-xs font-medium text-white focus:outline-none focus:border-sage focus:ring-1 focus:ring-sage cursor-pointer appearance-none shadow-inner transition-all hover:bg-white/20"
-              >
-                {therapists.map((th) => (
-                  <option key={th.id} value={th.id} className="text-charcoal bg-white">
-                    {th.name} · {th.status}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                aria-hidden
-                className="w-4 h-4 text-sage absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
-              />
+          <div className="relative z-10 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl p-4 text-center">
+              <p className="text-[10px] uppercase tracking-widest font-bold text-white/60 mb-1">Experience</p>
+              <p className="text-xl sm:text-2xl font-display font-bold">{selectedTherapist.experience_years} yrs</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl p-4 text-center">
+              <p className="text-[10px] uppercase tracking-widest font-bold text-white/60 mb-1">Sessions Done</p>
+              <p className="text-xl sm:text-2xl font-display font-bold">{selectedTherapist.completed_sessions}</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl p-4 text-center">
+              <p className="text-[10px] uppercase tracking-widest font-bold text-white/60 mb-1">Rating</p>
+              <p className="text-xl sm:text-2xl font-display font-bold flex items-center justify-center gap-1.5">
+                <Star className="w-4 h-4 text-gold fill-current" /> {selectedTherapist.rating} / 5
+              </p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl p-4 text-center relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-t from-gold/10 to-transparent" />
+              <p className="text-[10px] uppercase tracking-widest font-bold text-gold/80 mb-1">Upcoming Slots</p>
+              <p className="text-xl sm:text-2xl font-display font-bold text-gold">{upcomingCount}</p>
             </div>
           </div>
         </div>
+      )}
 
-        <dl className="mt-6 pt-5 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-          {[
-            ['Experience', `${currentTherapist?.experience_years} yrs`],
-            ['Sessions done', `${currentTherapist?.completed_sessions}`],
-            ['Rating', `${currentTherapist?.rating} / 5`],
-            ["Upcoming slots", `${therapistBookings.length}`],
-          ].map(([k, v], i) => (
-            <div key={k} className={`rounded-xl bg-white/[0.05] border border-white/[0.07] py-3 shadow-sm ${i === 3 ? 'text-gold' : 'text-white'}`}>
-              <dt className="text-[10px] font-medium text-white/50 uppercase tracking-wider">{k}</dt>
-              <dd className="mt-1 font-display text-lg font-semibold inline-flex items-center gap-1">
-                {(k === 'Rating') && <Star className="w-3.5 h-3.5 fill-current" />}
-                {v}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </Card>
+      <div>
+        {groupedBookings.length === 0 ? (
+          <div className="bg-white/50 backdrop-blur-xl border border-white/40 p-10 rounded-3xl text-center shadow-sm">
+            <CalendarIcon className="w-12 h-12 text-sage opacity-50 mx-auto mb-4" />
+            <h3 className="text-lg font-display font-bold text-forest-deep mb-1">No sessions assigned</h3>
+            <p className="text-sm text-slate-500">Your agenda is clear for now.</p>
+          </div>
+        ) : (
+          groupedBookings.map((group) => {
+            const groupDate = new Date(group.dateStr);
+            return (
+              <div key={group.dateStr} className="mb-10 last:mb-0 space-y-4">
+                <div className="flex items-center gap-3 pb-3 border-b border-sage/20 sticky top-0 bg-app-bg/80 backdrop-blur-md z-10 py-2">
+                  <CalendarIcon className="w-5 h-5 text-forest" />
+                  <h3 className="text-xl font-display font-bold text-forest-deep">
+                    {groupDate.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </h3>
+                  <Badge tone="neutral" className="ml-auto bg-white shadow-sm border-slate-200">
+                    {group.sessions.length} {group.sessions.length === 1 ? 'session' : 'sessions'}
+                  </Badge>
+                </div>
 
-      {/* Dynamic Date Timelines */}
-      {Object.keys(groupedBookings).length === 0 ? (
-        <Card className="p-8 sm:p-12 bg-white/50 backdrop-blur-lg border-white/40 shadow-sm">
-          <EmptyState
-            icon={<CalendarDays className="w-10 h-10 text-sage/60" />}
-            title="Your schedule is clear"
-            description="New sessions will appear here as soon as reception confirms them."
-          />
-        </Card>
-      ) : (
-        <div className="space-y-8">
-          {Object.entries(groupedBookings).map(([dateStr, dailyBookings]) => (
-            <Card key={dateStr} className="p-5 sm:p-6 bg-white/60 backdrop-blur-xl shadow-lg border-white/50 hover:shadow-xl transition-all duration-300">
-              <div className="flex items-center justify-between pb-4 border-b border-line">
-                <h2 className="inline-flex items-center gap-2 font-display text-base font-semibold text-forest-deep">
-                  <CalendarDays className="w-4 h-4 text-forest" /> {dateStr}
-                </h2>
-                <Badge tone="brand">{dailyBookings.length} sessions</Badge>
-              </div>
-
-              <ol className="relative mt-5 space-y-4 before:absolute before:left-[124px] before:top-2 before:bottom-2 before:w-px before:bg-line/70">
-                {dailyBookings.map((b) => {
-                  const isSessionActive = activeSessionId === b.id;
-                  const therapy = b.therapy;
-                  const room = b.room;
-                  // Only gray out past sessions if they are on today's date
-                  const isToday = dateStr === new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-                  const startHour = new Date(b.start_time).getHours();
-                  const isPast = isToday && startHour < hourNow && !isSessionActive;
-
-                  return (
-                    <li key={b.id} className="relative flex gap-4">
-                      {/* Time marker */}
-                      <div className="w-[104px] shrink-0 pt-4 text-right">
-                        <p className={`font-mono text-sm font-bold ${isSessionActive ? 'text-forest' : isPast ? 'text-muted' : 'text-charcoal'}`}>
-                          {new Date(b.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                        <p className="text-[11px] text-muted">{therapy?.duration_mins} min</p>
-                      </div>
-
-                      {/* Node */}
-                      <span
-                        aria-hidden
-                        className={`relative z-10 mt-6 w-2.5 h-2.5 shrink-0 rounded-full ring-4 ${
-                          isSessionActive
-                            ? 'bg-forest ring-sage-soft shadow-[0_0_10px_rgba(23,63,53,0.5)]'
-                            : isPast
-                              ? 'bg-muted/40 ring-ivory'
-                              : 'bg-sage ring-ivory'
-                        }`}
-                      />
-
-                      {/* Card Event */}
-                      <motion.div
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.25 }}
-                        className={`flex-1 rounded-2xl border p-4 sm:p-5 transition-all duration-300 ${
-                          isSessionActive
-                            ? 'bg-mint/80 border-forest/40 shadow-[0_8px_30px_rgba(23,63,53,0.15)] -translate-y-1 backdrop-blur-md'
-                            : 'bg-white/80 border-white/60 shadow-sm hover:shadow-md hover:-translate-y-0.5 backdrop-blur-sm'
-                        }`}
+                <div className="space-y-4">
+                  {group.sessions.map((session) => {
+                    const sessionStartTime = new Date(session.start_time);
+                    const isCompleted = session.status === 'Completed';
+                    const isInProgress = session.status === 'In Progress';
+                    const isScheduled = session.status === 'Scheduled';
+                    const isAwaitingApprovalOrPayment = ['Pending', 'Confirmed'].includes(session.status);
+                    
+                    return (
+                      <motion.div 
+                        key={session.id}
+                        layout
+                        className={`bg-white/70 backdrop-blur-2xl border p-5 sm:p-6 rounded-3xl shadow-sm transition-all duration-300
+                          ${isCompleted ? 'border-emerald-100 bg-emerald-50/30 opacity-80' : isInProgress ? 'border-sage shadow-md ring-2 ring-sage/20' : 'border-white'}
+                        `}
                       >
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-line/50">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3 className="font-display text-base font-semibold text-charcoal truncate">{b.client_name}</h3>
-                              {b.prakriti && <Badge tone="brand">{b.prakriti}</Badge>}
-                              <StatusBadge status={b.status} />
+                        <div className="flex flex-col md:flex-row gap-6">
+                          
+                          <div className="w-full md:w-32 shrink-0 border-b md:border-b-0 md:border-r border-slate-200/60 pb-4 md:pb-0 md:pr-4 flex flex-row md:flex-col items-center justify-between md:justify-start gap-2">
+                            <div className="text-left md:text-right w-full">
+                              <p className="text-lg font-display font-bold text-forest-deep">{sessionStartTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                              <p className="text-xs font-semibold text-slate-400 mt-0.5">{session.therapy?.duration_mins} min duration</p>
                             </div>
-                            <p className="mt-1 text-[11px] text-muted">Ref {b.booking_ref} · {b.client_phone}</p>
-                          </div>
-                          {isSessionActive && (
-                            <Badge tone="success" className="animate-pulse shrink-0">
-                              <Play className="w-3 h-3 fill-current" /> In progress
-                            </Badge>
-                          )}
-                        </div>
-
-                        <div className="my-3 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                          <DetailTile icon={<Droplets className="w-3.5 h-3.5" />} caption="Protocol" title={therapy?.name} sub={therapy?.sanskrit_name} />
-                          <DetailTile icon={<Clock className="w-3.5 h-3.5" />} caption="Medicated oil" title={therapy?.oil_type} sub={`${therapy?.oil_required_ml} mL pre-heated`} />
-                          <DetailTile icon={<MapPin className="w-3.5 h-3.5" />} caption="Chamber" title={room?.room_name} sub={room?.droni_wood} />
-                        </div>
-
-                        {b.medical_notes && (
-                          <p className="rounded-xl bg-amber-50/50 border border-amber-100/50 px-3.5 py-2.5 text-xs text-amber-900/80 leading-relaxed italic shadow-inner">
-                            “{b.medical_notes}”
-                          </p>
-                        )}
-
-                        <div className="mt-4 pt-3 border-t border-line/50 flex flex-wrap items-center justify-between gap-3">
-                          <Button variant="secondary" size="sm" onClick={() => setSelectedReportBooking(b)} icon={<FileText className="w-4 h-4" />}>
-                            Medical dossier
-                          </Button>
-                          <div className="flex items-center gap-2">
-                            {isSessionActive ? (
-                              <Button size="sm" onClick={() => handleCompleteSession(b.id)} icon={<CheckCircle2 className="w-4 h-4" />}>
-                                Mark complete
-                              </Button>
+                            {isCompleted ? (
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 self-end">
+                                <CheckCircle2 className="w-5 h-5" />
+                              </div>
                             ) : (
-                              <Button
-                                size="sm"
-                                onClick={() => handleStartSession(b.id)}
-                                icon={<Play className="w-3.5 h-3.5 fill-current" />}
-                              >
-                                Commence session
-                              </Button>
+                              <div className={`w-3 h-3 rounded-full md:mt-2 self-end ${isInProgress ? 'bg-amber-400 animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]' : 'bg-slate-300'}`} />
+                            )}
+                          </div>
+
+                          <div className="flex-1 space-y-4">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <h3 className="text-xl font-display font-bold text-forest-deep">{session.client_name}</h3>
+                              <Badge tone="neutral" className="bg-white border-slate-200 text-slate-600 shadow-sm">{session.prakriti}</Badge>
+                              <Badge tone={isCompleted ? 'neutral' : isScheduled ? 'success' : 'brand'}>{session.status}</Badge>
+                            </div>
+                            
+                            <p className="text-xs text-slate-500 font-medium">Ref {session.booking_ref} · {session.client_phone}</p>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div className="bg-slate-50/80 border border-slate-100 p-3 rounded-2xl">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1.5 mb-1">
+                                  <Activity className="w-3.5 h-3.5" /> Protocol
+                                </p>
+                                <p className="text-sm font-semibold text-forest-deep">{session.therapy?.name}</p>
+                                <p className="text-[11px] text-slate-500 italic truncate mt-0.5">{session.therapy?.sanskrit_name}</p>
+                              </div>
+                              
+                              <div className="bg-slate-50/80 border border-slate-100 p-3 rounded-2xl">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1.5 mb-1">
+                                  <Leaf className="w-3.5 h-3.5" /> Medicated Formulation
+                                </p>
+                                <p className="text-sm font-semibold text-forest-deep truncate">{session.therapy?.oil_type}</p>
+                                {session.therapy?.oil_required_ml ? (
+                                  <p className="text-[11px] text-slate-500 mt-0.5">{session.therapy?.oil_required_ml} mL pre-heated</p>
+                                ) : null}
+                              </div>
+
+                              <div className="bg-slate-50/80 border border-slate-100 p-3 rounded-2xl">
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 flex items-center gap-1.5 mb-1">
+                                  <MapPin className="w-3.5 h-3.5" /> Chamber
+                                </p>
+                                <p className="text-sm font-semibold text-forest-deep">{session.room?.room_name || 'TBD'}</p>
+                                <p className="text-[11px] text-slate-500 mt-0.5 truncate">{session.room?.droni_wood || 'Standard Setup'}</p>
+                              </div>
+                            </div>
+
+                            {session.medical_notes && (
+                              <div className="bg-amber-50/50 border border-amber-100/60 rounded-xl p-3 flex items-start gap-2">
+                                <FileText className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-900/80 font-medium leading-relaxed">{session.medical_notes}</p>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="w-full md:w-48 shrink-0 flex flex-col justify-end pt-4 md:pt-0 border-t md:border-t-0 md:border-l border-slate-200/60 md:pl-4">
+                            {isCompleted ? (
+                              <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100 w-full h-full flex flex-col items-center justify-center gap-2">
+                                <div className="flex items-center gap-1 text-emerald-600">
+                                   <CheckCircle2 className="w-5 h-5" />
+                                   <span className="text-xs font-bold uppercase tracking-widest">Completed</span>
+                                </div>
+                                <button 
+                                  onClick={() => handleRevertSession(session)} 
+                                  className="text-[10px] font-semibold text-slate-500 hover:text-forest flex items-center gap-1.5 underline decoration-slate-300 hover:decoration-forest underline-offset-2 transition-colors mr-auto"
+                                >
+                                   <RotateCcw className="w-3.5 h-3.5" /> Undo completion
+                                </button>
+                              </div>
+                            ) : isInProgress ? (
+                              <div className="space-y-3 w-full">
+                                <div className="bg-forest rounded-xl p-4 text-center border border-forest-deep shadow-inner relative overflow-hidden">
+                                  <div className="absolute inset-0 bg-white/10 animate-pulse pointer-events-none" />
+                                  <p className="text-[10px] font-bold text-sage uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
+                                    <Timer className="w-3.5 h-3.5" /> Time Remaining
+                                  </p>
+                                  <p className="text-3xl font-display font-bold text-white tracking-tight tabular-nums">
+                                    {formatTime(activeTimers[session.id] || 0)}
+                                  </p>
+                                </div>
+                                <Button 
+                                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white border-none shadow-md hover:shadow-lg transition-all" 
+                                  icon={<CheckCircle2 className="w-4 h-4" />}
+                                  onClick={() => handleCompleteSession(session)}
+                                >
+                                  Finish Early
+                                </Button>
+                              </div>
+                            ) : isScheduled ? (
+                              <div className="w-full h-full flex items-end">
+                                <Button 
+                                  className="w-full h-12 bg-forest hover:bg-forest-deep text-white shadow-md hover:-translate-y-0.5 transition-all"
+                                  icon={<Play className="w-4 h-4" />}
+                                  onClick={() => setCommenceConfirmModal(session)}
+                                >
+                                  Commence
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="h-full flex flex-col justify-center text-center p-3">
+                                <AlertCircle className="w-5 h-5 text-amber-500 mx-auto mb-1.5" />
+                                <span className="text-xs font-semibold text-slate-500">Awaiting payment or reception approval.</span>
+                              </div>
                             )}
                           </div>
                         </div>
                       </motion.div>
-                    </li>
-                  );
-                })}
-              </ol>
-            </Card>
-          ))}
-        </div>
-      )}
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
 
-      <MedicalReportModal booking={selectedReportBooking} onClose={() => setSelectedReportBooking(null)} />
+      <AnimatePresence>
+        {commenceConfirmModal && (
+          <Modal open onClose={() => { setCommenceConfirmModal(null); setCommenceInput(''); }} title="Verify Commencement" maxWidth="max-w-sm">
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600 leading-relaxed">
+                You are about to start the <span className="font-bold text-forest-deep">{commenceConfirmModal.therapy?.name}</span> session for <span className="font-bold text-forest-deep">{commenceConfirmModal.client_name}</span>. The timer will begin immediately.
+              </p>
+              <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl">
+                <p className="text-xs text-amber-800 font-medium mb-2">To confirm and prevent accidental starts, please type <strong>YES</strong> below:</p>
+                <Input 
+                  value={commenceInput}
+                  onChange={(e) => setCommenceInput(e.target.value)}
+                  placeholder="Type YES"
+                  className="bg-white uppercase"
+                  autoFocus
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="secondary" onClick={() => { setCommenceConfirmModal(null); setCommenceInput(''); }}>Cancel</Button>
+                <Button 
+                  disabled={commenceInput.trim().toUpperCase() !== 'YES'}
+                  onClick={executeCommenceSession}
+                  icon={<Play className="w-4 h-4" />}
+                >
+                  Start Session
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {sessionCompletedModal && (
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center relative overflow-hidden"
+            >
+              <div aria-hidden className="absolute inset-0 opacity-40 pointer-events-none" style={{ background: 'radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.15), transparent 70%)' }} />
+              
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 250, damping: 15, delay: 0.1 }}
+                className="w-20 h-20 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mb-5 shadow-inner relative z-10"
+              >
+                <CheckCircle2 className="w-10 h-10" strokeWidth={2.5} />
+              </motion.div>
+              
+              <h2 className="text-2xl font-display font-bold text-forest-deep mb-2 relative z-10">Session Completed!</h2>
+              <p className="text-sm text-slate-500 mb-6 font-medium leading-relaxed relative z-10">
+                <span className="text-charcoal font-bold">{sessionCompletedModal.therapy?.name}</span> for <span className="text-charcoal font-bold">{sessionCompletedModal.client_name}</span> has been successfully logged. The clinic inventory and monthly calendar have been updated.
+              </p>
+              
+              <Button
+                size="lg"
+                className="w-full relative z-10"
+                onClick={() => setSessionCompletedModal(null)}
+              >
+                Done
+              </Button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };
-
-const DetailTile: React.FC<{
-  icon: React.ReactNode;
-  caption?: string;
-  title?: string;
-  sub?: string;
-}> = ({ icon, caption, title, sub }) => (
-  <div className="rounded-xl bg-white/50 backdrop-blur-md border border-white/40 p-3 shadow-sm hover:bg-white/80 transition-colors">
-    <p className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted">
-      {icon}
-      {caption}
-    </p>
-    <p className="mt-1 font-semibold text-charcoal truncate">{title}</p>
-    <p className="text-[11px] text-muted truncate italic">{sub}</p>
-  </div>
-);
